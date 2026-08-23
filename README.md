@@ -110,8 +110,12 @@ to deploy an update. It:
 - Creates a dedicated, unprivileged system user (`evbalancer`, no login shell).
 - Copies the app to `/opt/ev-balancer` (leaving `.git` behind - the deployed
   copy never has repo/credential internals in it) and builds a venv there.
-- Leaves `/opt/ev-balancer/config.yaml` alone once it exists, so edits you
-  make there survive future re-installs - only the code gets synced.
+- Replaces `/opt/ev-balancer/config.yaml` with the one from the repo on
+  every run, backing up whatever was there first as
+  `config.yaml.bak.<timestamp>` - so config-schema updates (like new
+  sections) actually reach existing deployments, but nothing you'd
+  customized (IPs, fuse rating, etc.) is silently lost. Re-apply your
+  settings from the backup after each update.
 - Installs and enables a systemd **system** service (autostarts on boot, no
   login session required - unlike a `systemctl --user` service).
 

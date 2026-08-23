@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 # Installs the EV load balancer as a systemd service running under its own
 # dedicated system account. Safe to re-run after `git pull` to deploy an
-# update - config.yaml at the install destination is left alone once it
-# exists, so local edits made there survive re-installs.
+# update - config.yaml at the install destination is always replaced with
+# the one from the source checkout (so new config options actually reach
+# existing deployments), but the previous copy is backed up first rather
+# than discarded, since it likely has host-specific settings (IPs, fuse
+# rating, etc) that need re-applying by hand after each update.
 set -euo pipefail
+
+YELLOW='\033[1;33m'
+RESET='\033[0m'
 
 if [[ $EUID -ne 0 ]]; then
   echo "error: run as root: sudo $0" >&2
@@ -42,12 +48,15 @@ find "$SOURCE_DIR" -mindepth 1 -maxdepth 1 \
   ! -name '.git' ! -name '.venv' ! -name '__pycache__' ! -name 'config.yaml' \
   -exec cp -a {} "$INSTALL_DIR"/ \;
 
-if [[ ! -f "$INSTALL_DIR/config.yaml" ]]; then
-  cp "$SOURCE_DIR/config.yaml" "$INSTALL_DIR/config.yaml"
-  echo "Copied initial config.yaml to $INSTALL_DIR - edit it there from now on."
-else
-  echo "$INSTALL_DIR/config.yaml already exists - leaving it as-is."
+config_backup=""
+if [[ -f "$INSTALL_DIR/config.yaml" ]]; then
+  config_backup="$INSTALL_DIR/config.yaml.bak.$(date +%Y%m%d-%H%M%S)"
+  mv "$INSTALL_DIR/config.yaml" "$config_backup"
+  echo -e "${YELLOW}config.yaml was replaced with the repo's version - your previous one is backed up at:${RESET}"
+  echo -e "${YELLOW}  $config_backup${RESET}"
+  echo -e "${YELLOW}Re-apply any host-specific settings (IPs, fuse rating, etc.) from it into the new config.yaml.${RESET}"
 fi
+cp "$SOURCE_DIR/config.yaml" "$INSTALL_DIR/config.yaml"
 
 echo "Setting up Python virtualenv"
 if [[ ! -d "$INSTALL_DIR/.venv" ]]; then
@@ -75,6 +84,13 @@ echo
 echo "Installed and running as system user '$SERVICE_USER', app files in $INSTALL_DIR."
 echo "Autostarts on boot (system service, no login session required)."
 echo
+if [[ -n "$config_backup" ]]; then
+  echo -e "${YELLOW}>>> config.yaml was reset to the repo's version this run.${RESET}"
+  echo -e "${YELLOW}>>> Re-apply your host-specific settings from: $config_backup${RESET}"
+  echo
+fi
 echo "Watch it live:   journalctl -u ${SERVICE_NAME}.service -f -o cat"
 echo "Edit config:     $INSTALL_DIR/config.yaml, then: systemctl restart ${SERVICE_NAME}.service"
 echo "Deploy an update: git pull (in $SOURCE_DIR), then re-run: sudo $0"
+echo "                  (config.yaml gets reset to the repo's version every time - reapply your"
+echo "                  settings from the config.yaml.bak.* file it leaves behind)"
