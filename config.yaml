@@ -1,0 +1,72 @@
+# Shelly Pro 3EM - polled directly over its local HTTP RPC API for live
+# per-phase current. Its MQTT status pushes are too infrequent (~a minute)
+# for load balancing, and that cadence isn't configurable on the device, so
+# we poll it instead - much faster and fully under our control.
+shelly:
+  host: "10.30.0.54"
+  # How often to fetch a fresh reading. The device responds in ~25ms
+  # locally so this can be pushed low; the balancer's own cycle
+  # (defa.poll_interval_seconds below) is what actually gates how often a
+  # new value can be acted on and written to the station.
+  poll_interval_seconds: 1
+  # A reading older than this is treated as no data at all: the balancer
+  # stops writing eMS max current AND stops sending the alive heartbeat,
+  # so DEFA's own alive-timeout mechanism takes over and drops to
+  # fallback_current_a rather than us silently reusing a stale value.
+  # Defaults to max(5, poll_interval_seconds * 5) if omitted.
+  max_age_seconds: 5
+
+# DEFA Power charging stations (Modbus TCP). Multiple chargers are
+# supported: `stations` order sets priority, first = highest. Only the
+# first station always tries to start; each later one only joins in once
+# the one ahead of it is enabled but not actually drawing power (idle) -
+# so a single shared budget gets used by whichever charger actually has a
+# car plugged in, instead of splitting it upfront across all of them.
+defa:
+  poll_interval_seconds: 5
+  # Must be comfortably below alive_timeout_seconds, so a normal cycle or
+  # two of jitter never accidentally triggers the fallback.
+  alive_interval_seconds: 3
+  # Current each station falls back to if `alive` goes stale (this process
+  # crashes, loses network, etc). Written to register 2004 on startup.
+  fallback_current_a: 6
+  # How long each station waits without a fresh `alive` write before
+  # dropping to fallback_current_a. Written to register 2012 on startup.
+  alive_timeout_seconds: 10
+  # Below this actual current, a station counts as idle (not using its
+  # allocation), making room for the next-priority station to start.
+  idle_threshold_a: 1
+  # If combined actual draw across enabled stations ever exceeds the
+  # allocated ceiling (e.g. two ramp up at once), the lowest-priority one
+  # of them is forced off; this is the minimum time between successive
+  # forced shutdowns, so each gets a chance to take effect first.
+  shutdown_stagger_seconds: 5
+  stations:
+    - name: "Charger 1"
+      host: "10.30.0.62"
+      port: 502
+      unit_id: 255
+    # - name: "Charger 2"
+    #   host: "10.30.0.xx"
+    #   port: 502
+    #   unit_id: 255
+
+balancer:
+  # Main fuse rating per phase, in amps. This is the hard limit the balancer
+  # protects - set it to what your installation's incomer is actually rated for.
+  fuse_limit_a: 25
+  # Most EVs can't modulate below ~6A and will stop charging if asked to.
+  min_charge_current_a: 6
+  # Extra buffer subtracted from the computed headroom.
+  safety_margin_a: 1
+  # true  -> Shelly CTs are on the main incomer, so its reading already
+  #          includes what the EV itself is drawing (must subtract it back out).
+  # false -> Shelly CTs are on a separate circuit and never see the EV load.
+  shelly_measures_whole_house: true
+  # Output current is rounded down to a multiple of this many amps.
+  step_a: 1
+  # An increase in charge current only takes effect once the higher value
+  # has been the continuously-computed target for this many seconds, so a
+  # brief dip in house load doesn't bump the EV up and back down right
+  # after. Decreases (safety) always apply immediately, no hold.
+  increase_hold_seconds: 5
