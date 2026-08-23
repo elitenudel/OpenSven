@@ -83,25 +83,47 @@ which case writes and the heartbeat are both withheld on purpose), every
 station falls back to a safe current on its own rather than continuing to
 run whatever was last commanded.
 
-## Running as a background service
+## Web dashboard
+
+A read-only live dashboard is served straight out of the same process (no
+separate service, no extra Modbus/Shelly polling) whenever `web.enabled` is
+true in `config.yaml`. Visit `http://<host-ip>:8080/` from any device on
+your LAN. It shows Main Fuse per phase, combined EV actual current, the
+current Allocated Charging Power, and each charger's ON/OFF state, polling
+`/api/status` every 2 seconds.
+
+It binds `0.0.0.0` by default so it's reachable from other devices on your
+network, but nothing proxies it to the internet unless you deliberately set
+that up yourself - keep it that way unless the page grows authentication,
+since it currently has none.
+
+## Installing as a background service
 
 ```
-systemctl --user daemon-reload   # after editing the unit file
-systemctl --user enable --now ev-balancer.service
-loginctl enable-linger $USER     # keep it running across logout/reboot
+sudo ./scripts/install.sh
 ```
 
-The unit lives at `~/.config/systemd/user/ev-balancer.service`. To watch
-it live - attach and detach freely without affecting the running service:
+Run from inside the git checkout (works for a fresh Raspberry Pi or any
+Linux box with systemd). It's idempotent - safe to re-run after `git pull`
+to deploy an update. It:
+
+- Creates a dedicated, unprivileged system user (`evbalancer`, no login shell).
+- Copies the app to `/opt/ev-balancer` (leaving `.git` behind - the deployed
+  copy never has repo/credential internals in it) and builds a venv there.
+- Leaves `/opt/ev-balancer/config.yaml` alone once it exists, so edits you
+  make there survive future re-installs - only the code gets synced.
+- Installs and enables a systemd **system** service (autostarts on boot, no
+  login session required - unlike a `systemctl --user` service).
 
 ```
-journalctl --user -u ev-balancer.service -f
+journalctl -u ev-balancer.service -f -o cat   # watch it live
+systemctl status/restart/stop ev-balancer.service
 ```
 
-Other useful commands: `systemctl --user status/restart/stop
-ev-balancer.service` (restart after any `config.yaml` change), and
-`journalctl --user -u ev-balancer.service -n 100` for recent history
-without following.
+Edit `/opt/ev-balancer/config.yaml` for config changes, then `systemctl
+restart ev-balancer.service`. To remove everything: `sudo
+./scripts/uninstall.sh` (asks before deleting the app directory or the
+`evbalancer` user, since those are destructive).
 
 ## Assumptions worth double-checking against your setup
 

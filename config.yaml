@@ -51,6 +51,16 @@ defa:
     #   port: 502
     #   unit_id: 255
 
+# Read-only live dashboard, served from inside this same process (reads
+# the balancer's in-memory state directly - no extra Modbus/Shelly polling,
+# and never a second writer). LAN-only by default: 0.0.0.0 makes it
+# reachable from other devices on your network, but nothing proxies it to
+# the internet unless you deliberately set that up separately.
+web:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8080
+
 balancer:
   # Main fuse rating per phase, in amps. This is the hard limit the balancer
   # protects - set it to what your installation's incomer is actually rated for.

@@ -11,6 +11,8 @@ import yaml
 from .balancer import BalancerConfig, ChargeCurrentController, compute_max_charge_current_a
 from .defa_modbus import DefaModbusClient, StationReading
 from .shelly import ShellyPhaseCurrentReader
+from .state import BalancerState, ChargerStatus
+from .web import start_in_background as start_web_in_background
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,8 @@ class ChargerStation:
     name: str
     client: Optional[DefaModbusClient]
     enabled: bool = False
+    actual_a: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    installation_max_a: float = 0.0
 
 
 def run(config: dict, shelly_only: bool = False) -> None:
@@ -90,10 +94,20 @@ def run(config: dict, shelly_only: bool = False) -> None:
     poll_interval = defa_cfg.get("poll_interval_seconds", 5)
     alive_interval = defa_cfg.get("alive_interval_seconds", 20)
 
+    web_cfg = config.get("web", {})
+    state: Optional[BalancerState] = None
+    if web_cfg.get("enabled", False):
+        state = BalancerState()
+        web_host = web_cfg.get("host", "0.0.0.0")
+        web_port = web_cfg.get("port", 8080)
+        start_web_in_background(state, web_host, web_port)
+        logger.info("Web dashboard listening on http://%s:%s", web_host, web_port)
+
     controller = ChargeCurrentController(balancer_cfg)
     last_alive_sent = 0.0
     last_status_values: tuple[float, ...] | None = None
     last_forced_shutdown_at = 0.0
+    last_main_fuse_a = (0.0, 0.0, 0.0)
 
     priority_order = ", ".join(f"{i + 1}={st.name}" for i, st in enumerate(stations))
     logger.info(
@@ -132,9 +146,18 @@ def run(config: dict, shelly_only: bool = False) -> None:
                             )
                         )
 
+                for st, reading in zip(stations, readings):
+                    st.actual_a = (
+                        reading.actual_current_l1_ma / 1000.0,
+                        reading.actual_current_l2_ma / 1000.0,
+                        reading.actual_current_l3_ma / 1000.0,
+                    )
+                    st.installation_max_a = reading.installation_max_current_ma / 1000.0
+
                 ev_l1_a = sum(r.actual_current_l1_ma for r in readings) / 1000.0
                 ev_l2_a = sum(r.actual_current_l2_ma for r in readings) / 1000.0
                 ev_l3_a = sum(r.actual_current_l3_ma for r in readings) / 1000.0
+                last_main_fuse_a = (currents.l1_a, currents.l2_a, currents.l3_a)
 
                 raw_target_a = compute_max_charge_current_a(currents, ev_l1_a, ev_l2_a, ev_l3_a, balancer_cfg)
                 new_allocated_a = controller.update(raw_target_a, loop_start)
@@ -238,6 +261,29 @@ def run(config: dict, shelly_only: bool = False) -> None:
                 except IOError as exc:
                     logger.error("Failed to send alive to %s: %s", st.name, exc)
             last_alive_sent = loop_start
+
+        if state is not None:
+            state.update(
+                have_fresh_data=have_fresh_data,
+                main_fuse_l1_a=last_main_fuse_a[0],
+                main_fuse_l2_a=last_main_fuse_a[1],
+                main_fuse_l3_a=last_main_fuse_a[2],
+                ev_total_l1_a=sum(st.actual_a[0] for st in stations),
+                ev_total_l2_a=sum(st.actual_a[1] for st in stations),
+                ev_total_l3_a=sum(st.actual_a[2] for st in stations),
+                allocated_a=controller.committed_a or 0.0,
+                chargers=[
+                    ChargerStatus(
+                        name=st.name,
+                        enabled=st.enabled,
+                        actual_l1_a=st.actual_a[0],
+                        actual_l2_a=st.actual_a[1],
+                        actual_l3_a=st.actual_a[2],
+                        installation_max_a=st.installation_max_a,
+                    )
+                    for st in stations
+                ],
+            )
 
         elapsed = time.monotonic() - loop_start
         time.sleep(max(0.0, poll_interval - elapsed))

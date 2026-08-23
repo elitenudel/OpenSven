@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EV Load Balancer</title>
+<style>
+  :root {
+    color-scheme: dark;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html, body {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: #000;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    text-align: center;
+    padding: 2.5rem 1.5rem;
+  }
+
+  h1 {
+    font-size: clamp(1.75rem, 5vw, 3rem);
+    font-weight: 700;
+    margin: 0 0 0.35rem;
+    letter-spacing: -0.02em;
+  }
+
+  .subtitle {
+    font-size: clamp(0.85rem, 1.8vw, 1.1rem);
+    color: #999;
+    margin: 0 0 3rem;
+  }
+
+  .subtitle.stale {
+    color: #e67e22;
+  }
+
+  .hero {
+    margin-bottom: 3rem;
+  }
+
+  .hero .value {
+    font-size: clamp(3.5rem, 14vw, 8rem);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    line-height: 1;
+    color: #2ecc71;
+  }
+
+  .hero .unit {
+    font-size: 0.4em;
+    color: #6ba97e;
+    margin-left: 0.15em;
+  }
+
+  .hero .label {
+    margin-top: 0.5rem;
+    font-size: clamp(0.75rem, 1.6vw, 1.1rem);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: #999;
+  }
+
+  .section {
+    width: 100%;
+    max-width: 640px;
+    margin-bottom: 2.5rem;
+  }
+
+  .section-label {
+    font-size: clamp(0.7rem, 1.4vw, 0.9rem);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: #999;
+    margin-bottom: 1.25rem;
+  }
+
+  .phases {
+    display: flex;
+    gap: clamp(1rem, 4vw, 2.5rem);
+    justify-content: center;
+  }
+
+  .phase {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 4rem;
+  }
+
+  .phase .value {
+    font-size: clamp(1.75rem, 5vw, 2.75rem);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    line-height: 1;
+  }
+
+  .phase .label {
+    margin-top: 0.4rem;
+    font-size: clamp(0.65rem, 1.2vw, 0.85rem);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #777;
+  }
+
+  .chargers {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .charger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    background: #0d0d0d;
+    border: 1px solid #1f1f1f;
+    border-radius: 0.75rem;
+    padding: 0.9rem 1.25rem;
+    text-align: left;
+  }
+
+  .charger-name {
+    font-weight: 600;
+  }
+
+  .charger-current {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    color: #999;
+    font-size: 0.85rem;
+  }
+
+  .pill {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  .pill.on {
+    background: rgba(46, 204, 113, 0.15);
+    color: #2ecc71;
+  }
+
+  .pill.off {
+    background: rgba(153, 153, 153, 0.15);
+    color: #999;
+  }
+</style>
+</head>
+<body>
+  <h1>EV Load Balancer</h1>
+  <p class="subtitle" id="subtitle">Connecting&hellip;</p>
+
+  <div class="hero">
+    <div class="value"><span id="allocated">&mdash;</span><span class="unit">A</span></div>
+    <div class="label">Allocated Charging Power</div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Main Fuse</div>
+    <div class="phases">
+      <div class="phase"><span class="value" id="fuse-l1">&mdash;</span><span class="label">L1</span></div>
+      <div class="phase"><span class="value" id="fuse-l2">&mdash;</span><span class="label">L2</span></div>
+      <div class="phase"><span class="value" id="fuse-l3">&mdash;</span><span class="label">L3</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">EV Actual (combined)</div>
+    <div class="phases">
+      <div class="phase"><span class="value" id="ev-l1">&mdash;</span><span class="label">L1</span></div>
+      <div class="phase"><span class="value" id="ev-l2">&mdash;</span><span class="label">L2</span></div>
+      <div class="phase"><span class="value" id="ev-l3">&mdash;</span><span class="label">L3</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Chargers</div>
+    <div class="chargers" id="chargers"></div>
+  </div>
+
+  <script>
+    const subtitle = document.getElementById("subtitle");
+    const allocatedEl = document.getElementById("allocated");
+    const fuseL1 = document.getElementById("fuse-l1");
+    const fuseL2 = document.getElementById("fuse-l2");
+    const fuseL3 = document.getElementById("fuse-l3");
+    const evL1 = document.getElementById("ev-l1");
+    const evL2 = document.getElementById("ev-l2");
+    const evL3 = document.getElementById("ev-l3");
+    const chargersEl = document.getElementById("chargers");
+
+    function fmt(n) {
+      return Number(n).toFixed(1);
+    }
+
+    function renderChargers(chargers) {
+      chargersEl.innerHTML = "";
+      for (const c of chargers) {
+        const row = document.createElement("div");
+        row.className = "charger";
+        row.innerHTML =
+          '<span class="charger-name">' + c.name + "</span>" +
+          '<span class="charger-current">L1 ' + fmt(c.actual.l1) + "A &nbsp; L2 " + fmt(c.actual.l2) +
+          "A &nbsp; L3 " + fmt(c.actual.l3) + "A</span>" +
+          '<span class="pill ' + (c.enabled ? "on" : "off") + '">' + (c.enabled ? "ON" : "OFF") + "</span>";
+        chargersEl.appendChild(row);
+      }
+    }
+
+    async function poll() {
+      try {
+        const res = await fetch("/api/status");
+        const data = await res.json();
+
+        if (!data.ready) {
+          subtitle.textContent = "Waiting for first reading…";
+          subtitle.className = "subtitle stale";
+          return;
+        }
+
+        const ageSeconds = (Date.now() / 1000) - data.updated_at;
+        if (!data.have_fresh_data) {
+          subtitle.textContent = "No Shelly reading – charging paused for safety";
+          subtitle.className = "subtitle stale";
+        } else if (ageSeconds > 15) {
+          subtitle.textContent = "Balancer not responding – showing last known state";
+          subtitle.className = "subtitle stale";
+        } else {
+          subtitle.textContent = "Live";
+          subtitle.className = "subtitle";
+        }
+
+        allocatedEl.textContent = Math.round(data.allocated_a);
+        fuseL1.textContent = fmt(data.main_fuse.l1);
+        fuseL2.textContent = fmt(data.main_fuse.l2);
+        fuseL3.textContent = fmt(data.main_fuse.l3);
+        evL1.textContent = fmt(data.ev_total.l1);
+        evL2.textContent = fmt(data.ev_total.l2);
+        evL3.textContent = fmt(data.ev_total.l3);
+        renderChargers(data.chargers);
+      } catch (err) {
+        subtitle.textContent = "Connection lost";
+        subtitle.className = "subtitle stale";
+      }
+    }
+
+    poll();
+    setInterval(poll, 2000);
+  </script>
+</body>
+</html>
