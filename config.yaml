@@ -23,7 +23,7 @@ shelly:
 # so a single shared budget gets used by whichever charger actually has a
 # car plugged in, instead of splitting it upfront across all of them.
 defa:
-  poll_interval_seconds: 5
+  poll_interval_seconds: 2
   # Must be comfortably below alive_timeout_seconds, so a normal cycle or
   # two of jitter never accidentally triggers the fallback.
   alive_interval_seconds: 3
