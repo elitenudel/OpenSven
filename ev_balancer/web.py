@@ -8,14 +8,24 @@ DEFA itself - there's never a second, competing source of Modbus writes.
 from __future__ import annotations
 
 import threading
+import time
+from typing import Optional
 
 from flask import Flask, jsonify, render_template, request
 
+from .history import HistoryRecorder
 from .state import BalancerState
 from .stations import DuplicateStationError, StationManager, StationNotFoundError
 
+_DEFAULT_HISTORY_HOURS = 24
 
-def create_app(state: BalancerState, station_manager: StationManager, settings_token: str) -> Flask:
+
+def create_app(
+    state: BalancerState,
+    station_manager: StationManager,
+    history_recorder: Optional[HistoryRecorder],
+    settings_token: str,
+) -> Flask:
     app = Flask(__name__)
 
     def _settings_authorized() -> bool:
@@ -63,6 +73,17 @@ def create_app(state: BalancerState, station_manager: StationManager, settings_t
                 ],
             }
         )
+
+    @app.route("/api/history")
+    def api_history():
+        if history_recorder is None:
+            return jsonify({"enabled": False, "samples": []})
+        try:
+            hours = float(request.args.get("hours", _DEFAULT_HISTORY_HOURS))
+        except ValueError:
+            hours = _DEFAULT_HISTORY_HOURS
+        since = time.time() - max(hours, 0.0) * 3600
+        return jsonify({"enabled": True, "samples": history_recorder.read_since(since)})
 
     def _parse_charger_payload(payload: dict) -> tuple[str, str, int, int]:
         name = str(payload.get("name", "")).strip()
@@ -137,11 +158,12 @@ def create_app(state: BalancerState, station_manager: StationManager, settings_t
 def start_in_background(
     state: BalancerState,
     station_manager: StationManager,
+    history_recorder: Optional[HistoryRecorder],
     settings_token: str,
     host: str,
     port: int,
 ) -> None:
-    app = create_app(state, station_manager, settings_token)
+    app = create_app(state, station_manager, history_recorder, settings_token)
 
     def _serve() -> None:
         app.run(host=host, port=port, threaded=True, use_reloader=False)

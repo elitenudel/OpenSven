@@ -120,6 +120,28 @@ Anyone who can already reach the dashboard can see the token prompt, so
 treat it as a guard against accidental/automated changes from other devices
 on your LAN, not as real access control.
 
+### Charging history graph
+
+The chart icon next to the gear opens a graph of the last 24 hours: one
+line per charger plus the main fuse, all in watts (amps are converted using
+`history.voltage`, since a shared watts axis needs only one number per
+charger instead of three per-phase amp readings). A charger's line is
+dashed while the balancer has it enabled=false ("blocked" - withheld
+allocation, not necessarily unplugged) and replaced with a small red marker
+along the bottom while it's unreachable (`online: false`), so a stretch
+with no real data doesn't get silently plotted as 0W. A gap in a charger's
+own history is different from a gap in *all* of them at once - the latter
+means the balancer process itself wasn't running.
+
+Data recording is controlled by `history.*` in `config.yaml`: a sample is
+taken every `sample_interval_seconds` (60s by default - independent of
+`defa.poll_interval_seconds`, since the graph doesn't need control-loop
+resolution) and stored under `history.directory` as one compact file per
+hour. Total size is capped at `history.max_size_mb` (1024 by default) -
+once exceeded, whole hour-files are deleted oldest-first, which is
+important given how limited a Raspberry Pi's SD card usually is. Set
+`history.enabled: false` to turn recording off entirely.
+
 ## Installing as a background service
 
 ```

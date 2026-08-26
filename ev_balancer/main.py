@@ -9,6 +9,7 @@ import yaml
 
 from .balancer import BalancerConfig, ChargeCurrentController, compute_max_charge_current_a
 from .defa_modbus import StationReading
+from .history import HistoryRecorder, amps_to_watts
 from .shelly import ShellyPhaseCurrentReader
 from .state import BalancerState, ChargerStatus
 from .stations import StationManager
@@ -80,6 +81,16 @@ def run(config: dict, shelly_only: bool = False) -> None:
     poll_interval = defa_cfg.get("poll_interval_seconds", 5)
     alive_interval = defa_cfg.get("alive_interval_seconds", 20)
 
+    history_cfg = config.get("history", {})
+    history_recorder: Optional[HistoryRecorder] = None
+    history_sample_interval = history_cfg.get("sample_interval_seconds", 60)
+    history_voltage = history_cfg.get("voltage", 230)
+    if history_cfg.get("enabled", True):
+        history_recorder = HistoryRecorder(
+            directory=history_cfg.get("directory", "state/history"),
+            max_size_bytes=int(history_cfg.get("max_size_mb", 1024) * 1024 * 1024),
+        )
+
     web_cfg = config.get("web", {})
     state: Optional[BalancerState] = None
     if web_cfg.get("enabled", False):
@@ -87,7 +98,7 @@ def run(config: dict, shelly_only: bool = False) -> None:
         web_host = web_cfg.get("host", "0.0.0.0")
         web_port = web_cfg.get("port", 8080)
         settings_token = web_cfg.get("settings_token", "")
-        start_web_in_background(state, station_manager, settings_token, web_host, web_port)
+        start_web_in_background(state, station_manager, history_recorder, settings_token, web_host, web_port)
         logger.info("Web dashboard listening on http://%s:%s", web_host, web_port)
         if not settings_token:
             logger.info("Dashboard settings menu (add/remove chargers) is disabled - set web.settings_token to enable it")
@@ -97,6 +108,7 @@ def run(config: dict, shelly_only: bool = False) -> None:
     last_status_values: tuple[float, ...] | None = None
     last_forced_shutdown_at = 0.0
     last_main_fuse_a = (0.0, 0.0, 0.0)
+    last_history_sample_at = 0.0
 
     initial_stations = station_manager.snapshot()
     priority_order = ", ".join(f"{i + 1}={st.name}" for i, st in enumerate(initial_stations))
@@ -325,6 +337,17 @@ def run(config: dict, shelly_only: bool = False) -> None:
                     for st in stations
                 ],
             )
+
+        if history_recorder is not None and loop_start - last_history_sample_at >= history_sample_interval:
+            history_recorder.record(
+                timestamp=time.time(),
+                main_fuse_w=amps_to_watts(*last_main_fuse_a, voltage=history_voltage),
+                chargers={
+                    st.name: (amps_to_watts(*st.actual_a, voltage=history_voltage), st.enabled, st.online)
+                    for st in stations
+                },
+            )
+            last_history_sample_at = loop_start
 
         elapsed = time.monotonic() - loop_start
         time.sleep(max(0.0, poll_interval - elapsed))
