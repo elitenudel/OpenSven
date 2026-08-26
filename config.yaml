@@ -3,7 +3,7 @@
 # for load balancing, and that cadence isn't configurable on the device, so
 # we poll it instead - much faster and fully under our control.
 shelly:
-  host: "10.30.0.54"
+  host: "10.30.0.55"
   # How often to fetch a fresh reading. The device responds in ~25ms
   # locally so this can be pushed low; the balancer's own cycle
   # (defa.poll_interval_seconds below) is what actually gates how often a
