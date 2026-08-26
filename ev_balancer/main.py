@@ -129,16 +129,20 @@ def run(config: dict, shelly_only: bool = False) -> None:
             # unreachable - it must not freeze just because one charger did.
             last_main_fuse_a = (currents.l1_a, currents.l2_a, currents.l3_a)
             try:
-                # Read every station individually - even once one has
-                # failed - updating actual_a/online/last_seen for each as it
-                # succeeds, so one unreachable charger doesn't also freeze
-                # the others' live numbers. The rest of the cycle (allocation
-                # and writes) still gets skipped below (via station_error)
-                # until every station reads cleanly again.
+                # Read every station individually - a station whose read
+                # fails contributes a conservative 0A placeholder (never
+                # understates house-only load, so it can only make the
+                # computed allocation *more* cautious, not less) instead of
+                # aborting the whole cycle - one unreachable charger must
+                # not freeze the allocation and the other, healthy stations
+                # along with it. Its own actual_a/installation_max_a display
+                # is left untouched (last known value) rather than zeroed,
+                # and it's skipped below when writing, since a station that
+                # just failed to read is in no state to accept a write.
                 readings: list[StationReading] = []
-                station_error: Optional[IOError] = None
+                failed_indices: set[int] = set()
                 now = time.time()
-                for st in stations:
+                for i, st in enumerate(stations):
                     if st.client is None:
                         # No charger connected to read actual EV draw from,
                         # so this reflects headroom against house load alone.
@@ -152,8 +156,20 @@ def run(config: dict, shelly_only: bool = False) -> None:
                         try:
                             reading = st.client.read_station()
                         except IOError as exc:
+                            logger.error(
+                                "Modbus error reading %s, assuming 0A from it this cycle: %s", st.name, exc
+                            )
                             st.online = False
-                            station_error = station_error or exc
+                            failed_indices.add(i)
+                            readings.append(
+                                StationReading(
+                                    installation_max_current_ma=int(st.installation_max_a * 1000)
+                                    or int(balancer_cfg.fuse_limit_a * 1000),
+                                    actual_current_l1_ma=0,
+                                    actual_current_l2_ma=0,
+                                    actual_current_l3_ma=0,
+                                )
+                            )
                             continue
                         st.online = True
                         st.last_seen = now
@@ -165,9 +181,6 @@ def run(config: dict, shelly_only: bool = False) -> None:
                     )
                     st.installation_max_a = reading.installation_max_current_ma / 1000.0
                     readings.append(reading)
-
-                if station_error is not None:
-                    raise station_error
 
                 ev_l1_a = sum(r.actual_current_l1_ma for r in readings) / 1000.0
                 ev_l2_a = sum(r.actual_current_l2_ma for r in readings) / 1000.0
@@ -220,14 +233,23 @@ def run(config: dict, shelly_only: bool = False) -> None:
                         )
 
                 # --- write to each station: always on a state change,
-                # otherwise only when the allocated ceiling itself changed. ---
+                # otherwise only when the allocated ceiling itself changed.
+                # A station that just failed to read above is skipped - its
+                # connection is presumed broken this cycle, so there's
+                # nothing reliable to write to it. ---
                 for i, st in enumerate(stations):
+                    if i in failed_indices:
+                        continue
                     want_on = desired_enabled[i]
                     target_ma = min(int(allocated_a * 1000), readings[i].installation_max_current_ma) if want_on else 0
                     state_changed = want_on != st.enabled
                     if state_changed or (want_on and new_allocated_a is not None):
                         if st.client is not None:
-                            st.client.set_ems_max_current_ma(target_ma)
+                            try:
+                                st.client.set_ems_max_current_ma(target_ma)
+                            except IOError as exc:
+                                logger.error("Failed to write to %s, will retry next cycle: %s", st.name, exc)
+                                continue
                         if state_changed:
                             logger.info(
                                 "%s%s -> %s (%dA)",
