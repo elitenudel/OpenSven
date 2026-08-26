@@ -124,12 +124,17 @@ def run(config: dict, shelly_only: bool = False) -> None:
                 shelly_max_age_seconds,
             )
         else:
+            # Shelly's own reading is independent of every station, so this
+            # is safe to record even if a station below turns out to be
+            # unreachable - it must not freeze just because one charger did.
+            last_main_fuse_a = (currents.l1_a, currents.l2_a, currents.l3_a)
             try:
                 # Read every station individually - even once one has
-                # failed - so a single unreachable charger doesn't blank out
-                # the online/last_seen status of the others this cycle. The
-                # cycle itself still gets aborted below (via station_error)
-                # so nothing is acted on until every station reads cleanly.
+                # failed - updating actual_a/online/last_seen for each as it
+                # succeeds, so one unreachable charger doesn't also freeze
+                # the others' live numbers. The rest of the cycle (allocation
+                # and writes) still gets skipped below (via station_error)
+                # until every station reads cleanly again.
                 readings: list[StationReading] = []
                 station_error: Optional[IOError] = None
                 now = time.time()
@@ -137,40 +142,36 @@ def run(config: dict, shelly_only: bool = False) -> None:
                     if st.client is None:
                         # No charger connected to read actual EV draw from,
                         # so this reflects headroom against house load alone.
-                        readings.append(
-                            StationReading(
-                                installation_max_current_ma=int(balancer_cfg.fuse_limit_a * 1000),
-                                actual_current_l1_ma=0,
-                                actual_current_l2_ma=0,
-                                actual_current_l3_ma=0,
-                            )
+                        reading = StationReading(
+                            installation_max_current_ma=int(balancer_cfg.fuse_limit_a * 1000),
+                            actual_current_l1_ma=0,
+                            actual_current_l2_ma=0,
+                            actual_current_l3_ma=0,
                         )
-                        continue
-                    try:
-                        reading = st.client.read_station()
-                    except IOError as exc:
-                        st.online = False
-                        station_error = station_error or exc
-                        continue
-                    st.online = True
-                    st.last_seen = now
-                    readings.append(reading)
+                    else:
+                        try:
+                            reading = st.client.read_station()
+                        except IOError as exc:
+                            st.online = False
+                            station_error = station_error or exc
+                            continue
+                        st.online = True
+                        st.last_seen = now
 
-                if station_error is not None:
-                    raise station_error
-
-                for st, reading in zip(stations, readings):
                     st.actual_a = (
                         reading.actual_current_l1_ma / 1000.0,
                         reading.actual_current_l2_ma / 1000.0,
                         reading.actual_current_l3_ma / 1000.0,
                     )
                     st.installation_max_a = reading.installation_max_current_ma / 1000.0
+                    readings.append(reading)
+
+                if station_error is not None:
+                    raise station_error
 
                 ev_l1_a = sum(r.actual_current_l1_ma for r in readings) / 1000.0
                 ev_l2_a = sum(r.actual_current_l2_ma for r in readings) / 1000.0
                 ev_l3_a = sum(r.actual_current_l3_ma for r in readings) / 1000.0
-                last_main_fuse_a = (currents.l1_a, currents.l2_a, currents.l3_a)
 
                 raw_target_a = compute_max_charge_current_a(currents, ev_l1_a, ev_l2_a, ev_l3_a, balancer_cfg)
                 new_allocated_a = controller.update(raw_target_a, loop_start)
