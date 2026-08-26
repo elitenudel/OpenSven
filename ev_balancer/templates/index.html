@@ -131,23 +131,29 @@
   .chargers {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    border: 1px solid #1f1f1f;
+    border-radius: 0.75rem;
+    overflow: hidden;
   }
 
   .charger {
-    display: flex;
+    display: grid;
+    grid-template-columns: 13rem 12rem 1fr auto;
     align-items: center;
     gap: 1rem;
     background: #0d0d0d;
-    border: 1px solid #1f1f1f;
-    border-radius: 0.75rem;
     padding: 0.9rem 1.25rem;
     text-align: left;
+  }
+
+  .charger:not(:last-child) {
+    border-bottom: 1px solid #1f1f1f;
   }
 
   .charger-name {
     font-weight: 500;
     color: #ccc;
+    overflow-wrap: break-word;
   }
 
   .charger-current {
@@ -184,7 +190,6 @@
     color: #999;
     font-size: 0.75rem;
     white-space: nowrap;
-    margin-left: auto;
   }
 
   .status-dot {
@@ -202,6 +207,22 @@
   .status-dot.offline {
     background: #e74c3c;
     box-shadow: 0 0 0.4rem rgba(231, 76, 60, 0.6);
+  }
+
+  @media (max-width: 640px) {
+    .charger {
+      grid-template-columns: 1fr auto;
+      grid-template-areas:
+        "name pill"
+        "current current"
+        "status status";
+      row-gap: 0.4rem;
+    }
+
+    .charger-name { grid-area: name; }
+    .charger-current { grid-area: current; }
+    .charger-status { grid-area: status; }
+    .pill { grid-area: pill; justify-self: end; }
   }
 
   .settings-btn {
