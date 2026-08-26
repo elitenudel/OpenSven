@@ -172,9 +172,187 @@
     background: rgba(153, 153, 153, 0.15);
     color: #999;
   }
+
+  .charger-status {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: #999;
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+
+  .status-dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 999px;
+    flex-shrink: 0;
+  }
+
+  .status-dot.online {
+    background: #2ecc71;
+    box-shadow: 0 0 0.4rem rgba(46, 204, 113, 0.6);
+  }
+
+  .status-dot.offline {
+    background: #e74c3c;
+    box-shadow: 0 0 0.4rem rgba(231, 76, 60, 0.6);
+  }
+
+  .settings-btn {
+    position: fixed;
+    top: 1.25rem;
+    right: 1.25rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 999px;
+    border: 1px solid #1f1f1f;
+    background: #0d0d0d;
+    color: #999;
+    font-size: 1.2rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .settings-btn:hover {
+    color: #fff;
+    border-color: #333;
+  }
+
+  dialog#settings-dialog {
+    width: min(90vw, 30rem);
+    background: #0d0d0d;
+    color: #fff;
+    border: 1px solid #1f1f1f;
+    border-radius: 0.9rem;
+    padding: 1.5rem;
+    text-align: left;
+  }
+
+  dialog#settings-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.6);
+  }
+
+  dialog#settings-dialog h2 {
+    margin: 0 0 1.25rem;
+    font-size: 1.1rem;
+  }
+
+  .settings-field {
+    margin-bottom: 1.25rem;
+  }
+
+  .settings-field label {
+    display: block;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #999;
+    margin-bottom: 0.4rem;
+  }
+
+  .settings-field input {
+    width: 100%;
+    background: #000;
+    border: 1px solid #1f1f1f;
+    border-radius: 0.5rem;
+    color: #fff;
+    padding: 0.5rem 0.7rem;
+    font-size: 0.9rem;
+  }
+
+  .settings-charger-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #1f1f1f;
+    font-size: 0.85rem;
+  }
+
+  .settings-charger-row .meta {
+    color: #999;
+    font-size: 0.75rem;
+  }
+
+  .settings-remove-btn {
+    background: none;
+    border: 1px solid #3a1f1f;
+    color: #e67e22;
+    border-radius: 0.4rem;
+    padding: 0.25rem 0.6rem;
+    cursor: pointer;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+  }
+
+  .settings-remove-btn:hover {
+    border-color: #e67e22;
+  }
+
+  .add-charger-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+    margin-top: 1rem;
+  }
+
+  .add-charger-form input {
+    background: #000;
+    border: 1px solid #1f1f1f;
+    border-radius: 0.5rem;
+    color: #fff;
+    padding: 0.5rem 0.7rem;
+    font-size: 0.85rem;
+  }
+
+  .add-charger-form input#new-name,
+  .add-charger-form input#new-host {
+    grid-column: span 2;
+  }
+
+  .add-charger-form button {
+    grid-column: span 2;
+    background: rgba(46, 204, 113, 0.15);
+    color: #2ecc71;
+    border: 1px solid rgba(46, 204, 113, 0.3);
+    border-radius: 0.5rem;
+    padding: 0.55rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .settings-error {
+    color: #e67e22;
+    font-size: 0.8rem;
+    min-height: 1.2em;
+    margin: 0.75rem 0 0;
+  }
+
+  .settings-disabled-note {
+    color: #999;
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+
+  .settings-close-btn {
+    margin-top: 1.25rem;
+    width: 100%;
+    background: none;
+    border: 1px solid #1f1f1f;
+    color: #999;
+    border-radius: 0.5rem;
+    padding: 0.55rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
+  <button class="settings-btn" id="settings-btn" title="Settings" aria-label="Settings">&#9881;</button>
+
   <h1>EV Load Balancer</h1>
   <p class="subtitle" id="subtitle">Connecting&hellip;</p>
 
@@ -206,6 +384,35 @@
     <div class="chargers" id="chargers"></div>
   </div>
 
+  <dialog id="settings-dialog">
+    <h2>Settings</h2>
+
+    <div class="settings-field">
+      <label for="token-input">Settings token</label>
+      <input type="password" id="token-input" placeholder="required to add/remove chargers" autocomplete="off">
+    </div>
+
+    <div class="settings-field">
+      <label>Chargers</label>
+      <div id="settings-chargers-list"></div>
+    </div>
+
+    <form class="add-charger-form" id="add-charger-form">
+      <input type="text" id="new-name" placeholder="Name" required>
+      <input type="text" id="new-host" placeholder="Host / IP" required>
+      <input type="number" id="new-port" placeholder="Port" value="502" min="1" max="65535">
+      <input type="number" id="new-unit-id" placeholder="Unit ID" value="255" min="0" max="255">
+      <button type="submit">Add charger</button>
+    </form>
+
+    <p class="settings-error" id="settings-error"></p>
+    <p class="settings-disabled-note" id="settings-disabled-note" hidden>
+      Settings are disabled. Set <code>web.settings_token</code> in config.yaml to enable adding/removing chargers.
+    </p>
+
+    <button class="settings-close-btn" id="settings-close">Close</button>
+  </dialog>
+
   <script>
     const subtitle = document.getElementById("subtitle");
     const allocatedEl = document.getElementById("allocated");
@@ -217,8 +424,38 @@
     const evL3 = document.getElementById("ev-l3");
     const chargersEl = document.getElementById("chargers");
 
+    const settingsBtn = document.getElementById("settings-btn");
+    const settingsDialog = document.getElementById("settings-dialog");
+    const settingsClose = document.getElementById("settings-close");
+    const tokenInput = document.getElementById("token-input");
+    const settingsChargersList = document.getElementById("settings-chargers-list");
+    const addChargerForm = document.getElementById("add-charger-form");
+    const settingsError = document.getElementById("settings-error");
+    const settingsDisabledNote = document.getElementById("settings-disabled-note");
+
+    let latestChargers = [];
+    let settingsEnabled = false;
+
+    const TOKEN_STORAGE_KEY = "evb-settings-token";
+    tokenInput.value = localStorage.getItem(TOKEN_STORAGE_KEY) || "";
+    tokenInput.addEventListener("change", () => {
+      localStorage.setItem(TOKEN_STORAGE_KEY, tokenInput.value);
+    });
+
     function fmt(n) {
       return Number(n).toFixed(1);
+    }
+
+    function formatLastSeen(unixSeconds) {
+      if (!unixSeconds) {
+        return "never";
+      }
+      const deltaS = Math.max(0, Date.now() / 1000 - unixSeconds);
+      if (deltaS < 5) return "just now";
+      if (deltaS < 60) return Math.floor(deltaS) + "s ago";
+      if (deltaS < 3600) return Math.floor(deltaS / 60) + "m ago";
+      if (deltaS < 86400) return Math.floor(deltaS / 3600) + "h ago";
+      return Math.floor(deltaS / 86400) + "d ago";
     }
 
     function renderChargers(chargers) {
@@ -226,14 +463,110 @@
       for (const c of chargers) {
         const row = document.createElement("div");
         row.className = "charger";
+        const statusText = c.online ? "Online" : "Offline &middot; last seen " + formatLastSeen(c.last_seen);
         row.innerHTML =
           '<span class="charger-name">' + c.name + "</span>" +
           '<span class="charger-current">L1 ' + fmt(c.actual.l1) + "A &nbsp; L2 " + fmt(c.actual.l2) +
           "A &nbsp; L3 " + fmt(c.actual.l3) + "A</span>" +
+          '<span class="charger-status"><span class="status-dot ' + (c.online ? "online" : "offline") +
+          '"></span>' + statusText + "</span>" +
           '<span class="pill ' + (c.enabled ? "on" : "off") + '">' + (c.enabled ? "ON" : "OFF") + "</span>";
         chargersEl.appendChild(row);
       }
     }
+
+    function renderSettingsChargers(chargers) {
+      settingsChargersList.innerHTML = "";
+      if (chargers.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "settings-disabled-note";
+        empty.textContent = "No chargers configured yet.";
+        settingsChargersList.appendChild(empty);
+        return;
+      }
+      for (const c of chargers) {
+        const row = document.createElement("div");
+        row.className = "settings-charger-row";
+        const info = document.createElement("span");
+        info.innerHTML =
+          c.name + '<br><span class="meta">' + c.host + ":" + c.port + " · unit " + c.unit_id + "</span>";
+        row.appendChild(info);
+        if (settingsEnabled) {
+          const removeBtn = document.createElement("button");
+          removeBtn.className = "settings-remove-btn";
+          removeBtn.type = "button";
+          removeBtn.textContent = "Remove";
+          removeBtn.addEventListener("click", () => removeCharger(c.name));
+          row.appendChild(removeBtn);
+        }
+        settingsChargersList.appendChild(row);
+      }
+    }
+
+    function settingsHeaders() {
+      return { "Content-Type": "application/json", "X-Settings-Token": tokenInput.value };
+    }
+
+    async function removeCharger(name) {
+      if (!confirm("Remove charger \"" + name + "\"? It will be turned off first.")) {
+        return;
+      }
+      settingsError.textContent = "";
+      try {
+        const res = await fetch("/api/chargers/" + encodeURIComponent(name), {
+          method: "DELETE",
+          headers: settingsHeaders(),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          settingsError.textContent = data.error || "Failed to remove charger";
+          return;
+        }
+        await poll();
+        renderSettingsChargers(latestChargers);
+      } catch (err) {
+        settingsError.textContent = "Connection lost while removing charger";
+      }
+    }
+
+    addChargerForm.addEventListener("submit", async (evt) => {
+      evt.preventDefault();
+      settingsError.textContent = "";
+      const body = {
+        name: document.getElementById("new-name").value.trim(),
+        host: document.getElementById("new-host").value.trim(),
+        port: Number(document.getElementById("new-port").value || 502),
+        unit_id: Number(document.getElementById("new-unit-id").value || 255),
+      };
+      try {
+        const res = await fetch("/api/chargers", {
+          method: "POST",
+          headers: settingsHeaders(),
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          settingsError.textContent = data.error || "Failed to add charger";
+          return;
+        }
+        addChargerForm.reset();
+        document.getElementById("new-port").value = "502";
+        document.getElementById("new-unit-id").value = "255";
+        await poll();
+        renderSettingsChargers(latestChargers);
+      } catch (err) {
+        settingsError.textContent = "Connection lost while adding charger";
+      }
+    });
+
+    settingsBtn.addEventListener("click", () => {
+      settingsError.textContent = "";
+      renderSettingsChargers(latestChargers);
+      settingsDisabledNote.hidden = settingsEnabled;
+      addChargerForm.hidden = !settingsEnabled;
+      settingsDialog.showModal();
+    });
+    settingsClose.addEventListener("click", () => settingsDialog.close());
 
     async function poll() {
       try {
@@ -266,6 +599,8 @@
         evL2.textContent = fmt(data.ev_total.l2);
         evL3.textContent = fmt(data.ev_total.l3);
         renderChargers(data.chargers);
+        latestChargers = data.chargers;
+        settingsEnabled = data.settings_enabled;
       } catch (err) {
         subtitle.textContent = "Connection lost";
         subtitle.className = "subtitle stale";

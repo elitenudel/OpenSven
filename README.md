@@ -55,8 +55,12 @@ own `installation max current`, since stations can have different wiring).
 
 ### Multiple chargers
 
-`defa.stations` is a priority-ordered list - first entry = highest
-priority. Each cycle:
+Chargers are a priority-ordered list - first entry = highest priority.
+`defa.stations` in `config.yaml` only seeds that list the very first time
+the process ever runs; after that, the live list lives in
+`defa.chargers_file` (default `state/chargers.yaml`, created automatically)
+and is managed from the dashboard's settings menu instead - see [Web
+dashboard](#web-dashboard) below. Each cycle:
 
 - Station 0 always tries to run whenever there's at least
   `min_charge_current_a` allocated.
@@ -94,8 +98,25 @@ current Allocated Charging Power, and each charger's ON/OFF state, polling
 
 It binds `0.0.0.0` by default so it's reachable from other devices on your
 network, but nothing proxies it to the internet unless you deliberately set
-that up yourself - keep it that way unless the page grows authentication,
-since it currently has none.
+that up yourself - keep it that way, since viewing the dashboard itself
+still has no authentication.
+
+### Settings menu (add/remove chargers)
+
+The gear icon opens a settings panel where chargers can be added or removed
+without editing `config.yaml` or restarting the service - a newly added one
+is best-effort connected immediately (tolerating an unreachable host, same
+as at startup - it's simply retried every poll cycle) and joins the
+priority list at the end (lowest priority); removing one turns it off
+(`eMS max current` set to 0) before dropping it. Both actions persist to
+`defa.chargers_file` immediately.
+
+This is disabled by default. Set `web.settings_token` in `config.yaml` to a
+secret value to enable it - the dashboard then asks for that same token
+(stored in the browser's local storage) before allowing an add or remove.
+Anyone who can already reach the dashboard can see the token prompt, so
+treat it as a guard against accidental/automated changes from other devices
+on your LAN, not as real access control.
 
 ## Installing as a background service
 

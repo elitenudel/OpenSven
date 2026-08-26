@@ -16,11 +16,16 @@ from typing import Optional
 @dataclass
 class ChargerStatus:
     name: str
+    host: str
+    port: int
+    unit_id: int
     enabled: bool
     actual_l1_a: float
     actual_l2_a: float
     actual_l3_a: float
     installation_max_a: float
+    online: bool
+    last_seen: Optional[float]
 
 
 @dataclass

@@ -38,11 +38,13 @@ if ! id "$SERVICE_USER" >/dev/null 2>&1; then
 fi
 
 echo "Syncing app files to $INSTALL_DIR"
-mkdir -p "$INSTALL_DIR"
-# Wipe old code (but keep config.yaml and the venv), then copy the current
-# source tree in fresh, so renamed/removed files don't linger.
+mkdir -p "$INSTALL_DIR" "$INSTALL_DIR/state"
+# Wipe old code (but keep config.yaml, the venv, and state/ - the latter
+# holds the live charger list persisted by the dashboard's settings menu),
+# then copy the current source tree in fresh, so renamed/removed files
+# don't linger.
 find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 \
-  ! -name 'config.yaml' ! -name '.venv' \
+  ! -name 'config.yaml' ! -name '.venv' ! -name 'state' \
   -exec rm -rf {} +
 find "$SOURCE_DIR" -mindepth 1 -maxdepth 1 \
   ! -name '.git' ! -name '.venv' ! -name '__pycache__' ! -name 'config.yaml' \

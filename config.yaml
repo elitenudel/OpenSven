@@ -41,6 +41,14 @@ defa:
   # of them is forced off; this is the minimum time between successive
   # forced shutdowns, so each gets a chance to take effect first.
   shutdown_stagger_seconds: 5
+  # Where the *live* charger list is persisted once the dashboard's settings
+  # menu is used to add/remove one (path relative to the working directory).
+  # Kept separate from this file so a runtime change never rewrites
+  # config.yaml's comments/formatting. Created automatically on first run.
+  chargers_file: "state/chargers.yaml"
+  # Seed list, only used the very first time this process runs (i.e. before
+  # chargers_file exists). After that, chargers_file is the source of truth
+  # and this is ignored - manage chargers from the dashboard instead.
   stations:
     - name: "Charger 1"
       host: "10.30.0.200"
@@ -60,6 +68,10 @@ web:
   enabled: true
   host: "0.0.0.0"
   port: 8080
+  # Required to use the dashboard's settings menu (add/remove chargers).
+  # Sent back as the X-Settings-Token header. Leave blank to disable the
+  # settings menu entirely - the dashboard stays read-only.
+  settings_token: ""
 
 balancer:
   # Main fuse rating per phase, in amps. This is the hard limit the balancer

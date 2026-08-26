@@ -14,12 +14,13 @@ Restart=on-failure
 RestartSec=5
 
 # The service only needs network access (Modbus TCP to the chargers, HTTP
-# to the Shelly) and never writes to disk at runtime, so it can run fully
-# read-only/sandboxed.
+# to the Shelly) and, besides persisting the dashboard's live charger list
+# to state/, never writes to disk, so it can run mostly read-only/sandboxed.
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+ReadWritePaths={{INSTALL_DIR}}/state
 
 [Install]
 WantedBy=multi-user.target

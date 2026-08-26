@@ -3,15 +3,15 @@ from __future__ import annotations
 import argparse
 import logging
 import time
-from dataclasses import dataclass
 from typing import Optional
 
 import yaml
 
 from .balancer import BalancerConfig, ChargeCurrentController, compute_max_charge_current_a
-from .defa_modbus import DefaModbusClient, StationReading
+from .defa_modbus import StationReading
 from .shelly import ShellyPhaseCurrentReader
 from .state import BalancerState, ChargerStatus
+from .stations import StationManager
 from .web import start_in_background as start_web_in_background
 
 logger = logging.getLogger(__name__)
@@ -28,15 +28,6 @@ _COLOR_RESET = "\033[0m"
 def load_config(path: str) -> dict:
     with open(path) as f:
         return yaml.safe_load(f)
-
-
-@dataclass
-class ChargerStation:
-    name: str
-    client: Optional[DefaModbusClient]
-    enabled: bool = False
-    actual_a: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    installation_max_a: float = 0.0
 
 
 def run(config: dict, shelly_only: bool = False) -> None:
@@ -56,9 +47,11 @@ def run(config: dict, shelly_only: bool = False) -> None:
     # since the last good read would go completely unaccounted for.
     shelly_max_age_seconds = shelly_cfg.get("max_age_seconds", max(5.0, shelly_poll_interval * 5))
 
-    stations_cfg = defa_cfg["stations"]
-    if not stations_cfg:
-        raise ValueError("defa.stations must list at least one charger")
+    # Seed list used only the first time this process ever runs - once
+    # chargers_file exists (either from a prior run or from the web
+    # dashboard's settings menu), it's the source of truth and this is
+    # ignored, so config.yaml's comments/formatting never get rewritten.
+    stations_cfg = defa_cfg.get("stations", [])
 
     fallback_current_a = defa_cfg.get("fallback_current_a", 0)
     alive_timeout_seconds = defa_cfg.get("alive_timeout_seconds", 100)
@@ -70,26 +63,13 @@ def run(config: dict, shelly_only: bool = False) -> None:
     # a chance to take effect before the next one is considered.
     shutdown_stagger_seconds = defa_cfg.get("shutdown_stagger_seconds", 5)
 
-    stations: list[ChargerStation] = []
-    for i, sc in enumerate(stations_cfg):
-        name = sc.get("name", f"charger{i + 1}")
-        client: Optional[DefaModbusClient] = None
-        if not shelly_only:
-            client = DefaModbusClient(host=sc["host"], port=sc.get("port", 502), unit_id=sc.get("unit_id", 255))
-            try:
-                client.connect()
-
-                # Safe fallback if this process dies: station drops to this
-                # current instead of continuing to charge unmanaged once
-                # `alive` goes stale.
-                client.set_timeout_max_charge_current_ma(int(fallback_current_a * 1000))
-                client.set_alive_timeout_ms(int(alive_timeout_seconds * 1000))
-            except IOError as exc:
-                # Don't let one unreachable station block startup - keep the
-                # client around so the main loop's own IOError handling
-                # retries the connection on every subsequent poll.
-                logger.error("Communication error setting up %s, will retry: %s", name, exc)
-        stations.append(ChargerStation(name=name, client=client))
+    station_manager = StationManager(
+        store_path=defa_cfg.get("chargers_file", "state/chargers.yaml"),
+        shelly_only=shelly_only,
+        fallback_current_a=fallback_current_a,
+        alive_timeout_seconds=alive_timeout_seconds,
+    )
+    station_manager.load_initial(stations_cfg)
 
     if shelly_only:
         logger.warning(
@@ -106,8 +86,11 @@ def run(config: dict, shelly_only: bool = False) -> None:
         state = BalancerState()
         web_host = web_cfg.get("host", "0.0.0.0")
         web_port = web_cfg.get("port", 8080)
-        start_web_in_background(state, web_host, web_port)
+        settings_token = web_cfg.get("settings_token", "")
+        start_web_in_background(state, station_manager, settings_token, web_host, web_port)
         logger.info("Web dashboard listening on http://%s:%s", web_host, web_port)
+        if not settings_token:
+            logger.info("Dashboard settings menu (add/remove chargers) is disabled - set web.settings_token to enable it")
 
     controller = ChargeCurrentController(balancer_cfg)
     last_alive_sent = 0.0
@@ -115,16 +98,22 @@ def run(config: dict, shelly_only: bool = False) -> None:
     last_forced_shutdown_at = 0.0
     last_main_fuse_a = (0.0, 0.0, 0.0)
 
-    priority_order = ", ".join(f"{i + 1}={st.name}" for i, st in enumerate(stations))
+    initial_stations = station_manager.snapshot()
+    priority_order = ", ".join(f"{i + 1}={st.name}" for i, st in enumerate(initial_stations))
     logger.info(
         "Load balancer running (poll every %ss, alive every %ss). Charger priority: %s",
         poll_interval,
         alive_interval,
-        priority_order,
+        priority_order or "(none yet - add one via the dashboard settings menu)",
     )
 
     while True:
         loop_start = time.monotonic()
+
+        # Chargers can be added/removed at runtime via the dashboard, so
+        # take a fresh snapshot every cycle rather than a list fixed at
+        # startup.
+        stations = station_manager.snapshot()
 
         currents = shelly.latest(max_age_seconds=shelly_max_age_seconds)
         have_fresh_data = currents is not None
@@ -136,11 +125,16 @@ def run(config: dict, shelly_only: bool = False) -> None:
             )
         else:
             try:
+                # Read every station individually - even once one has
+                # failed - so a single unreachable charger doesn't blank out
+                # the online/last_seen status of the others this cycle. The
+                # cycle itself still gets aborted below (via station_error)
+                # so nothing is acted on until every station reads cleanly.
                 readings: list[StationReading] = []
+                station_error: Optional[IOError] = None
+                now = time.time()
                 for st in stations:
-                    if st.client is not None:
-                        readings.append(st.client.read_station())
-                    else:
+                    if st.client is None:
                         # No charger connected to read actual EV draw from,
                         # so this reflects headroom against house load alone.
                         readings.append(
@@ -151,6 +145,19 @@ def run(config: dict, shelly_only: bool = False) -> None:
                                 actual_current_l3_ma=0,
                             )
                         )
+                        continue
+                    try:
+                        reading = st.client.read_station()
+                    except IOError as exc:
+                        st.online = False
+                        station_error = station_error or exc
+                        continue
+                    st.online = True
+                    st.last_seen = now
+                    readings.append(reading)
+
+                if station_error is not None:
+                    raise station_error
 
                 for st, reading in zip(stations, readings):
                     st.actual_a = (
@@ -173,7 +180,7 @@ def run(config: dict, shelly_only: bool = False) -> None:
                 # only joins in if the one ahead of it is enabled but idle
                 # (not actually using its allocation). ---
                 desired_enabled = [False] * len(stations)
-                if allocated_a >= balancer_cfg.min_charge_current_a:
+                if stations and allocated_a >= balancer_cfg.min_charge_current_a:
                     desired_enabled[0] = True
                     for i in range(1, len(stations)):
                         prev_actual_max_a = (
@@ -281,11 +288,16 @@ def run(config: dict, shelly_only: bool = False) -> None:
                 chargers=[
                     ChargerStatus(
                         name=st.name,
+                        host=st.host,
+                        port=st.port,
+                        unit_id=st.unit_id,
                         enabled=st.enabled,
                         actual_l1_a=st.actual_a[0],
                         actual_l2_a=st.actual_a[1],
                         actual_l3_a=st.actual_a[2],
                         installation_max_a=st.installation_max_a,
+                        online=st.online,
+                        last_seen=st.last_seen,
                     )
                     for st in stations
                 ],
