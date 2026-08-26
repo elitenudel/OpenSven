@@ -3,6 +3,8 @@
 # for load balancing, and that cadence isn't configurable on the device, so
 # we poll it instead - much faster and fully under our control.
 shelly:
+  # LAN IP (or hostname) of the Shelly Pro 3EM, no scheme/port - just what
+  # goes in front of "/rpc/EM.GetStatus".
   host: "10.30.0.55"
   # How often to fetch a fresh reading. The device responds in ~25ms
   # locally so this can be pushed low; the balancer's own cycle
@@ -23,6 +25,9 @@ shelly:
 # so a single shared budget gets used by whichever charger actually has a
 # car plugged in, instead of splitting it upfront across all of them.
 defa:
+  # How often the main loop re-reads every station and re-evaluates the
+  # allocation. Also gates how often eMS max current actually gets rewritten,
+  # regardless of how fast shelly.poll_interval_seconds delivers new data.
   poll_interval_seconds: 2
   # Must be comfortably below alive_timeout_seconds, so a normal cycle or
   # two of jitter never accidentally triggers the fallback.
@@ -50,9 +55,14 @@ defa:
   # chargers_file exists). After that, chargers_file is the source of truth
   # and this is ignored - manage chargers from the dashboard instead.
   stations:
+    # Label shown in logs and the dashboard - purely cosmetic.
     - name: "Charger 1"
+      # LAN IP (or hostname) of the DEFA Power station's Modbus TCP interface.
       host: "10.30.0.200"
+      # Modbus TCP port - 502 is the standard default, DEFA doesn't change it.
       port: 502
+      # Modbus unit/device id. DEFA stations ship with 255 (broadcast/"don't
+      # care") unless it's been reconfigured for a multi-unit setup.
       unit_id: 255
     # - name: "Charger 2"
     #   host: "10.30.0.xx"
@@ -65,8 +75,13 @@ defa:
 # reachable from other devices on your network, but nothing proxies it to
 # the internet unless you deliberately set that up separately.
 web:
+  # Turns the dashboard on/off. When false, none of the other web.* settings
+  # have any effect and nothing is served.
   enabled: true
+  # Interface to bind. "0.0.0.0" = reachable from any device on the LAN;
+  # use "127.0.0.1" to restrict it to this machine only.
   host: "0.0.0.0"
+  # TCP port the dashboard listens on.
   port: 8080
   # Required to use the dashboard's settings menu (add/remove chargers).
   # Sent back as the X-Settings-Token header. Leave blank to disable the

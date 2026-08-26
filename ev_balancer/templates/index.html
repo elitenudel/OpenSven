@@ -324,6 +324,18 @@
     cursor: pointer;
   }
 
+  .field-hint {
+    color: #999;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    margin: 0.4rem 0 0;
+  }
+
+  .field-hint.span-2 {
+    grid-column: span 2;
+    margin-top: 0;
+  }
+
   .settings-error {
     color: #e67e22;
     font-size: 0.8rem;
@@ -390,6 +402,7 @@
     <div class="settings-field">
       <label for="token-input">Settings token</label>
       <input type="password" id="token-input" placeholder="required to add/remove chargers" autocomplete="off">
+      <p class="field-hint">Must match <code>web.settings_token</code> in config.yaml.</p>
     </div>
 
     <div class="settings-field">
@@ -398,10 +411,11 @@
     </div>
 
     <form class="add-charger-form" id="add-charger-form">
-      <input type="text" id="new-name" placeholder="Name" required>
-      <input type="text" id="new-host" placeholder="Host / IP" required>
-      <input type="number" id="new-port" placeholder="Port" value="502" min="1" max="65535">
-      <input type="number" id="new-unit-id" placeholder="Unit ID" value="255" min="0" max="255">
+      <input type="text" id="new-name" placeholder="Name" title="Label shown on the dashboard - purely cosmetic" required>
+      <input type="text" id="new-host" placeholder="Host / IP" title="LAN IP or hostname of the charger's Modbus TCP interface" required>
+      <input type="number" id="new-port" placeholder="Port" value="502" min="1" max="65535" title="Modbus TCP port - 502 is the standard default, DEFA doesn't change it">
+      <input type="number" id="new-unit-id" placeholder="Unit ID" value="255" min="0" max="255" title="Modbus unit/device id - DEFA stations ship with 255 unless reconfigured for a multi-unit setup">
+      <p class="field-hint span-2">Port and Unit ID are Modbus TCP settings - 502 / 255 are correct for most DEFA Power stations.</p>
       <button type="submit">Add charger</button>
     </form>
 
