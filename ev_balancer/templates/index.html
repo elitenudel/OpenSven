@@ -284,6 +284,50 @@
     color: #999;
   }
 
+  .graph-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .graph-header h2 {
+    margin: 0;
+  }
+
+  .graph-range-toggle {
+    display: flex;
+    gap: 0.4rem;
+  }
+
+  .graph-range-btn {
+    background: none;
+    border: 1px solid #1f1f1f;
+    color: #999;
+    border-radius: 999px;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  }
+
+  .graph-range-btn:hover {
+    border-color: #333;
+    color: #fff;
+  }
+
+  .graph-range-btn:active {
+    transform: scale(0.94);
+  }
+
+  .graph-range-btn.active {
+    background: rgba(46, 204, 113, 0.15);
+    border-color: rgba(46, 204, 113, 0.4);
+    color: #2ecc71;
+  }
+
   .graph-legend {
     display: flex;
     flex-wrap: wrap;
@@ -606,7 +650,14 @@
   </dialog>
 
   <dialog id="graph-dialog" class="app-dialog">
-    <h2>Charging history <span class="graph-subtitle">last 24h</span></h2>
+    <div class="graph-header">
+      <h2>Charging history <span class="graph-subtitle" id="graph-subtitle">last 24h</span></h2>
+      <div class="graph-range-toggle" id="graph-range-toggle">
+        <button type="button" class="graph-range-btn" data-hours="0.25" data-label="last 15m">15m</button>
+        <button type="button" class="graph-range-btn" data-hours="1" data-label="last 1h">1h</button>
+        <button type="button" class="graph-range-btn active" data-hours="24" data-label="last 24h">24h</button>
+      </div>
+    </div>
 
     <div class="graph-legend" id="graph-legend"></div>
 
@@ -644,6 +695,8 @@
     const graphSvg = document.getElementById("graph-svg");
     const graphLegend = document.getElementById("graph-legend");
     const graphError = document.getElementById("graph-error");
+    const graphSubtitle = document.getElementById("graph-subtitle");
+    const graphRangeToggle = document.getElementById("graph-range-toggle");
     const tokenInput = document.getElementById("token-input");
     const settingsChargersList = document.getElementById("settings-chargers-list");
     const addChargerForm = document.getElementById("add-charger-form");
@@ -829,7 +882,7 @@
     });
     settingsClose.addEventListener("click", () => settingsDialog.close());
 
-    const GRAPH_HOURS = 24;
+    let graphHours = 24;
     const GRAPH_COLORS = ["#2ecc71", "#3498db", "#f1c40f", "#9b59b6", "#1abc9c", "#e67e22", "#5dade2", "#af7ac5"];
     const GRAPH_OFFLINE_COLOR = "#e74c3c";
     const GRAPH_FUSE_COLOR = "#e5e5e5";
@@ -913,7 +966,7 @@
       graphLegend.innerHTML = "";
 
       const nowS = Date.now() / 1000;
-      const tMin = nowS - GRAPH_HOURS * 3600;
+      const tMin = nowS - graphHours * 3600;
       const tMax = nowS;
 
       if (samples.length === 0) {
@@ -1029,7 +1082,7 @@
       // and rebuilds in one synchronous pass once data is actually ready,
       // so the old chart stays on screen until the new one replaces it.
       try {
-        const res = await fetch("/api/history?hours=" + GRAPH_HOURS);
+        const res = await fetch("/api/history?hours=" + graphHours);
         const data = await res.json();
         if (!data.enabled) {
           graphSvg.innerHTML = "";
@@ -1045,6 +1098,17 @@
     }
 
     let graphRefreshTimer = null;
+
+    graphRangeToggle.addEventListener("click", (evt) => {
+      const btn = evt.target.closest(".graph-range-btn");
+      if (!btn) return;
+      graphHours = Number(btn.dataset.hours);
+      graphSubtitle.textContent = btn.dataset.label;
+      for (const b of graphRangeToggle.querySelectorAll(".graph-range-btn")) {
+        b.classList.toggle("active", b === btn);
+      }
+      loadGraph();
+    });
 
     graphBtn.addEventListener("click", () => {
       graphDialog.showModal();
