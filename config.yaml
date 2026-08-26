@@ -111,17 +111,14 @@ balancer:
 # Charging history recorded for the dashboard's graph button. Amps are
 # converted to watts before being stored, so each charger and the main
 # fuse only need a single number per sample instead of three - smaller on
-# disk and a simpler graph.
+# disk and a simpler graph. A sample is recorded every defa.poll_interval_seconds
+# cycle - there's no separate interval to configure here.
 history:
   enabled: true
   # Hard cap on how much disk this is allowed to use in total, in MB. Once
   # exceeded, the oldest recorded data is deleted first to make room -
   # important given how limited a Raspberry Pi's SD card is.
   max_size_mb: 1024
-  # How often a data point is recorded. Independent of
-  # defa.poll_interval_seconds - a coarser interval here trades graph
-  # resolution for a lot less disk usage and SD card wear.
-  sample_interval_seconds: 60
   # Where history files are stored (path relative to the working directory).
   directory: "state/history"
   # Nominal mains voltage per phase, used to convert amps to watts

@@ -83,7 +83,6 @@ def run(config: dict, shelly_only: bool = False) -> None:
 
     history_cfg = config.get("history", {})
     history_recorder: Optional[HistoryRecorder] = None
-    history_sample_interval = history_cfg.get("sample_interval_seconds", 60)
     history_voltage = history_cfg.get("voltage", 230)
     if history_cfg.get("enabled", True):
         history_recorder = HistoryRecorder(
@@ -108,7 +107,6 @@ def run(config: dict, shelly_only: bool = False) -> None:
     last_status_values: tuple[float, ...] | None = None
     last_forced_shutdown_at = 0.0
     last_main_fuse_a = (0.0, 0.0, 0.0)
-    last_history_sample_at = 0.0
 
     initial_stations = station_manager.snapshot()
     priority_order = ", ".join(f"{i + 1}={st.name}" for i, st in enumerate(initial_stations))
@@ -338,7 +336,7 @@ def run(config: dict, shelly_only: bool = False) -> None:
                 ],
             )
 
-        if history_recorder is not None and loop_start - last_history_sample_at >= history_sample_interval:
+        if history_recorder is not None:
             history_recorder.record(
                 timestamp=time.time(),
                 main_fuse_w=amps_to_watts(*last_main_fuse_a, voltage=history_voltage),
@@ -347,7 +345,6 @@ def run(config: dict, shelly_only: bool = False) -> None:
                     for st in stations
                 },
             )
-            last_history_sample_at = loop_start
 
         elapsed = time.monotonic() - loop_start
         time.sleep(max(0.0, poll_interval - elapsed))

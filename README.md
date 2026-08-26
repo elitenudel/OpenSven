@@ -134,10 +134,9 @@ own history is different from a gap in *all* of them at once - the latter
 means the balancer process itself wasn't running.
 
 Data recording is controlled by `history.*` in `config.yaml`: a sample is
-taken every `sample_interval_seconds` (60s by default - independent of
-`defa.poll_interval_seconds`, since the graph doesn't need control-loop
-resolution) and stored under `history.directory` as one compact file per
-hour. Total size is capped at `history.max_size_mb` (1024 by default) -
+taken every `defa.poll_interval_seconds` cycle (same rate the balancer
+itself polls at) and stored under `history.directory` as one compact file
+per hour. Total size is capped at `history.max_size_mb` (1024 by default) -
 once exceeded, whole hour-files are deleted oldest-first, which is
 important given how limited a Raspberry Pi's SD card usually is. Set
 `history.enabled: false` to turn recording off entirely.
