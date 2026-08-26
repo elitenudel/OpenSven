@@ -1038,11 +1038,24 @@
       }
     }
 
+    let graphRefreshTimer = null;
+
     graphBtn.addEventListener("click", () => {
       graphDialog.showModal();
       loadGraph();
+      if (graphRefreshTimer !== null) clearInterval(graphRefreshTimer);
+      graphRefreshTimer = setInterval(loadGraph, 5000);
     });
     graphClose.addEventListener("click", () => graphDialog.close());
+    // Native "close" fires on the Close button, Escape, or any other way
+    // the dialog closes - stopping the refresh here (rather than only in
+    // the button's click handler) covers all of them.
+    graphDialog.addEventListener("close", () => {
+      if (graphRefreshTimer !== null) {
+        clearInterval(graphRefreshTimer);
+        graphRefreshTimer = null;
+      }
+    });
 
     async function poll() {
       try {
