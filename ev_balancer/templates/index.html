@@ -81,6 +81,10 @@
     margin-bottom: 2.5rem;
   }
 
+  .section-wide {
+    max-width: 800px;
+  }
+
   .section-label {
     font-size: clamp(0.7rem, 1.4vw, 0.9rem);
     text-transform: uppercase;
@@ -391,7 +395,7 @@
     </div>
   </div>
 
-  <div class="section">
+  <div class="section section-wide">
     <div class="section-label">Chargers</div>
     <div class="chargers" id="chargers"></div>
   </div>
@@ -402,7 +406,7 @@
     <div class="settings-field">
       <label for="token-input">Settings token</label>
       <input type="password" id="token-input" placeholder="required to add/remove chargers" autocomplete="off">
-      <p class="field-hint">Must match <code>web.settings_token</code> in config.yaml.</p>
+      <p class="field-hint">Your password/token set in config.yaml.</p>
     </div>
 
     <div class="settings-field">
@@ -411,11 +415,11 @@
     </div>
 
     <form class="add-charger-form" id="add-charger-form">
-      <input type="text" id="new-name" placeholder="Name" title="Label shown on the dashboard - purely cosmetic" required>
-      <input type="text" id="new-host" placeholder="Host / IP" title="LAN IP or hostname of the charger's Modbus TCP interface" required>
-      <input type="number" id="new-port" placeholder="Port" value="502" min="1" max="65535" title="Modbus TCP port - 502 is the standard default, DEFA doesn't change it">
-      <input type="number" id="new-unit-id" placeholder="Unit ID" value="255" min="0" max="255" title="Modbus unit/device id - DEFA stations ship with 255 unless reconfigured for a multi-unit setup">
-      <p class="field-hint span-2">Port and Unit ID are Modbus TCP settings - 502 / 255 are correct for most DEFA Power stations.</p>
+      <input type="text" id="new-name" placeholder="Name" title="Label shown on the dashboard" required>
+      <input type="text" id="new-host" placeholder="Host / IP" title="LAN IP or hostname of the charger" required>
+      <input type="number" id="new-port" placeholder="Port" value="502" min="1" max="65535" title="Modbus TCP port (502 is standard)">
+      <input type="number" id="new-unit-id" placeholder="Unit ID" value="255" min="0" max="255" title="Modbus unit id (255 is DEFA's default)">
+      <p class="field-hint span-2">Defaults (502 / 255) work for most DEFA stations.</p>
       <button type="submit">Add charger</button>
     </form>
 
