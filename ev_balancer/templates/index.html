@@ -1022,16 +1022,22 @@
     }
 
     async function loadGraph() {
-      graphError.textContent = "";
-      graphSvg.innerHTML = "";
-      graphLegend.innerHTML = "";
+      // Deliberately doesn't clear graph-svg/graph-legend up front - doing
+      // so before the (normally near-instant, but not guaranteed) fetch
+      // resolves left a blank frame that could get painted and read as a
+      // flash/twitch on every periodic refresh. renderGraph() below clears
+      // and rebuilds in one synchronous pass once data is actually ready,
+      // so the old chart stays on screen until the new one replaces it.
       try {
         const res = await fetch("/api/history?hours=" + GRAPH_HOURS);
         const data = await res.json();
         if (!data.enabled) {
+          graphSvg.innerHTML = "";
+          graphLegend.innerHTML = "";
           graphError.textContent = "History recording is disabled - set history.enabled in config.yaml.";
           return;
         }
+        graphError.textContent = "";
         renderGraph(data.samples);
       } catch (err) {
         graphError.textContent = "Could not load charging history.";
