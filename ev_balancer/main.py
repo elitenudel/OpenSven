@@ -76,13 +76,19 @@ def run(config: dict, shelly_only: bool = False) -> None:
         client: Optional[DefaModbusClient] = None
         if not shelly_only:
             client = DefaModbusClient(host=sc["host"], port=sc.get("port", 502), unit_id=sc.get("unit_id", 255))
-            client.connect()
+            try:
+                client.connect()
 
-            # Safe fallback if this process dies: station drops to this
-            # current instead of continuing to charge unmanaged once
-            # `alive` goes stale.
-            client.set_timeout_max_charge_current_ma(int(fallback_current_a * 1000))
-            client.set_alive_timeout_ms(int(alive_timeout_seconds * 1000))
+                # Safe fallback if this process dies: station drops to this
+                # current instead of continuing to charge unmanaged once
+                # `alive` goes stale.
+                client.set_timeout_max_charge_current_ma(int(fallback_current_a * 1000))
+                client.set_alive_timeout_ms(int(alive_timeout_seconds * 1000))
+            except IOError as exc:
+                # Don't let one unreachable station block startup - keep the
+                # client around so the main loop's own IOError handling
+                # retries the connection on every subsequent poll.
+                logger.error("Communication error setting up %s, will retry: %s", name, exc)
         stations.append(ChargerStation(name=name, client=client))
 
     if shelly_only:

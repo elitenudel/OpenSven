@@ -12,6 +12,7 @@ import logging
 from dataclasses import dataclass
 
 from pymodbus.client import ModbusTcpClient
+from pymodbus.exceptions import ModbusException
 
 logger = logging.getLogger(__name__)
 
@@ -58,19 +59,28 @@ class DefaModbusClient:
         self._client.close()
 
     def _read_input_uint32(self, address: int) -> int:
-        result = self._client.read_input_registers(address, count=2, device_id=self._unit_id)
+        try:
+            result = self._client.read_input_registers(address, count=2, device_id=self._unit_id)
+        except ModbusException as exc:
+            raise IOError(f"Modbus communication error reading input register {address}: {exc}") from exc
         if result.isError():
             raise IOError(f"Modbus read error at input register {address}: {result}")
         return _decode_uint32(result.registers)
 
     def _read_holding_uint32(self, address: int) -> int:
-        result = self._client.read_holding_registers(address, count=2, device_id=self._unit_id)
+        try:
+            result = self._client.read_holding_registers(address, count=2, device_id=self._unit_id)
+        except ModbusException as exc:
+            raise IOError(f"Modbus communication error reading holding register {address}: {exc}") from exc
         if result.isError():
             raise IOError(f"Modbus read error at holding register {address}: {result}")
         return _decode_uint32(result.registers)
 
     def _write_uint32(self, address: int, value: int) -> None:
-        result = self._client.write_registers(address, _encode_uint32(value), device_id=self._unit_id)
+        try:
+            result = self._client.write_registers(address, _encode_uint32(value), device_id=self._unit_id)
+        except ModbusException as exc:
+            raise IOError(f"Modbus communication error writing register {address}: {exc}") from exc
         if result.isError():
             raise IOError(f"Modbus write error at register {address}: {result}")
 
