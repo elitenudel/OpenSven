@@ -64,6 +64,22 @@ def create_app(state: BalancerState, station_manager: StationManager, settings_t
             }
         )
 
+    def _parse_charger_payload(payload: dict) -> tuple[str, str, int, int]:
+        name = str(payload.get("name", "")).strip()
+        host = str(payload.get("host", "")).strip()
+        if not name or not host:
+            raise ValueError("name and host are required")
+        try:
+            port = int(payload.get("port", 502))
+            unit_id = int(payload.get("unit_id", 255))
+        except (TypeError, ValueError):
+            raise ValueError("port and unit_id must be integers")
+        if not (1 <= port <= 65535):
+            raise ValueError("port must be between 1 and 65535")
+        if not (0 <= unit_id <= 255):
+            raise ValueError("unit_id must be between 0 and 255")
+        return name, host, port, unit_id
+
     @app.route("/api/chargers", methods=["POST"])
     def add_charger():
         if not settings_token:
@@ -71,26 +87,36 @@ def create_app(state: BalancerState, station_manager: StationManager, settings_t
         if not _settings_authorized():
             return jsonify({"error": "Invalid settings token"}), 403
 
-        payload = request.get_json(silent=True) or {}
-        name = str(payload.get("name", "")).strip()
-        host = str(payload.get("host", "")).strip()
-        if not name or not host:
-            return jsonify({"error": "name and host are required"}), 400
         try:
-            port = int(payload.get("port", 502))
-            unit_id = int(payload.get("unit_id", 255))
-        except (TypeError, ValueError):
-            return jsonify({"error": "port and unit_id must be integers"}), 400
-        if not (1 <= port <= 65535):
-            return jsonify({"error": "port must be between 1 and 65535"}), 400
-        if not (0 <= unit_id <= 255):
-            return jsonify({"error": "unit_id must be between 0 and 255"}), 400
+            name, host, port, unit_id = _parse_charger_payload(request.get_json(silent=True) or {})
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
 
         try:
             station_manager.add(name, host, port, unit_id)
         except DuplicateStationError as exc:
             return jsonify({"error": str(exc)}), 409
         return jsonify({"ok": True}), 201
+
+    @app.route("/api/chargers/<name>", methods=["PUT"])
+    def update_charger(name: str):
+        if not settings_token:
+            return jsonify({"error": "Settings are disabled - set web.settings_token in config.yaml to enable them"}), 403
+        if not _settings_authorized():
+            return jsonify({"error": "Invalid settings token"}), 403
+
+        try:
+            new_name, host, port, unit_id = _parse_charger_payload(request.get_json(silent=True) or {})
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        try:
+            station_manager.update(name, new_name, host, port, unit_id)
+        except StationNotFoundError:
+            return jsonify({"error": f"Charger '{name}' not found"}), 404
+        except DuplicateStationError as exc:
+            return jsonify({"error": str(exc)}), 409
+        return jsonify({"ok": True})
 
     @app.route("/api/chargers/<name>", methods=["DELETE"])
     def remove_charger(name: str):

@@ -238,11 +238,18 @@
     font-size: 1.2rem;
     line-height: 1;
     cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
   }
 
   .settings-btn:hover {
     color: #fff;
     border-color: #333;
+    background: #161616;
+  }
+
+  .settings-btn:active {
+    transform: scale(0.93);
+    background: #1f1f1f;
   }
 
   dialog#settings-dialog {
@@ -302,19 +309,51 @@
     font-size: 0.75rem;
   }
 
+  .settings-charger-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
+
+  .settings-edit-btn,
   .settings-remove-btn {
     background: none;
-    border: 1px solid #3a1f1f;
-    color: #e67e22;
     border-radius: 0.4rem;
     padding: 0.25rem 0.6rem;
     cursor: pointer;
     font-size: 0.75rem;
     flex-shrink: 0;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  }
+
+  .settings-edit-btn {
+    border: 1px solid #2a2a2a;
+    color: #ccc;
+  }
+
+  .settings-edit-btn:hover {
+    border-color: #555;
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .settings-edit-btn:active {
+    transform: scale(0.95);
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .settings-remove-btn {
+    border: 1px solid #3a1f1f;
+    color: #e67e22;
   }
 
   .settings-remove-btn:hover {
     border-color: #e67e22;
+    background: rgba(230, 126, 34, 0.1);
+  }
+
+  .settings-remove-btn:active {
+    transform: scale(0.95);
+    background: rgba(230, 126, 34, 0.2);
   }
 
   .add-charger-form {
@@ -338,8 +377,14 @@
     grid-column: span 2;
   }
 
-  .add-charger-form button {
+  .form-actions {
     grid-column: span 2;
+    display: flex;
+    gap: 0.6rem;
+  }
+
+  .form-actions button[type="submit"] {
+    flex: 1;
     background: rgba(46, 204, 113, 0.15);
     color: #2ecc71;
     border: 1px solid rgba(46, 204, 113, 0.3);
@@ -348,6 +393,38 @@
     font-size: 0.85rem;
     font-weight: 600;
     cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  }
+
+  .form-actions button[type="submit"]:hover {
+    background: rgba(46, 204, 113, 0.25);
+    border-color: rgba(46, 204, 113, 0.5);
+  }
+
+  .form-actions button[type="submit"]:active {
+    transform: scale(0.98);
+    background: rgba(46, 204, 113, 0.35);
+  }
+
+  .form-cancel-btn {
+    background: none;
+    border: 1px solid #1f1f1f;
+    color: #999;
+    border-radius: 0.5rem;
+    padding: 0.55rem 0.9rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  }
+
+  .form-cancel-btn:hover {
+    border-color: #333;
+    color: #fff;
+  }
+
+  .form-cancel-btn:active {
+    transform: scale(0.97);
+    background: rgba(255, 255, 255, 0.08);
   }
 
   .field-hint {
@@ -385,6 +462,17 @@
     padding: 0.55rem;
     font-size: 0.85rem;
     cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  }
+
+  .settings-close-btn:hover {
+    border-color: #333;
+    color: #fff;
+  }
+
+  .settings-close-btn:active {
+    transform: scale(0.98);
+    background: rgba(255, 255, 255, 0.06);
   }
 </style>
 </head>
@@ -442,7 +530,10 @@
       <input type="number" id="new-port" placeholder="Port" value="502" min="1" max="65535" title="Modbus TCP port (502 is standard)">
       <input type="number" id="new-unit-id" placeholder="Unit ID" value="255" min="0" max="255" title="Modbus unit id (255 is DEFA's default)">
       <p class="field-hint span-2">Defaults (502 / 255) work for most DEFA stations.</p>
-      <button type="submit">Add charger</button>
+      <div class="form-actions">
+        <button type="button" class="form-cancel-btn" id="cancel-edit-btn" hidden>Cancel</button>
+        <button type="submit" id="add-charger-submit">Add charger</button>
+      </div>
     </form>
 
     <p class="settings-error" id="settings-error"></p>
@@ -470,11 +561,14 @@
     const tokenInput = document.getElementById("token-input");
     const settingsChargersList = document.getElementById("settings-chargers-list");
     const addChargerForm = document.getElementById("add-charger-form");
+    const addChargerSubmitBtn = document.getElementById("add-charger-submit");
+    const cancelEditBtn = document.getElementById("cancel-edit-btn");
     const settingsError = document.getElementById("settings-error");
     const settingsDisabledNote = document.getElementById("settings-disabled-note");
 
     let latestChargers = [];
     let settingsEnabled = false;
+    let editingChargerName = null;
 
     const TOKEN_STORAGE_KEY = "evb-settings-token";
     tokenInput.value = localStorage.getItem(TOKEN_STORAGE_KEY) || "";
@@ -532,16 +626,54 @@
           c.name + '<br><span class="meta">' + c.host + ":" + c.port + " · unit " + c.unit_id + "</span>";
         row.appendChild(info);
         if (settingsEnabled) {
+          const actions = document.createElement("div");
+          actions.className = "settings-charger-actions";
+
+          const editBtn = document.createElement("button");
+          editBtn.className = "settings-edit-btn";
+          editBtn.type = "button";
+          editBtn.textContent = "Edit";
+          editBtn.addEventListener("click", () => startEdit(c));
+          actions.appendChild(editBtn);
+
           const removeBtn = document.createElement("button");
           removeBtn.className = "settings-remove-btn";
           removeBtn.type = "button";
           removeBtn.textContent = "Remove";
           removeBtn.addEventListener("click", () => removeCharger(c.name));
-          row.appendChild(removeBtn);
+          actions.appendChild(removeBtn);
+
+          row.appendChild(actions);
         }
         settingsChargersList.appendChild(row);
       }
     }
+
+    function startEdit(c) {
+      editingChargerName = c.name;
+      document.getElementById("new-name").value = c.name;
+      document.getElementById("new-host").value = c.host;
+      document.getElementById("new-port").value = c.port;
+      document.getElementById("new-unit-id").value = c.unit_id;
+      addChargerSubmitBtn.textContent = "Save changes";
+      cancelEditBtn.hidden = false;
+      settingsError.textContent = "";
+      document.getElementById("new-name").focus();
+    }
+
+    function stopEdit() {
+      editingChargerName = null;
+      addChargerForm.reset();
+      document.getElementById("new-port").value = "502";
+      document.getElementById("new-unit-id").value = "255";
+      addChargerSubmitBtn.textContent = "Add charger";
+      cancelEditBtn.hidden = true;
+    }
+
+    cancelEditBtn.addEventListener("click", () => {
+      settingsError.textContent = "";
+      stopEdit();
+    });
 
     function settingsHeaders() {
       return { "Content-Type": "application/json", "X-Settings-Token": tokenInput.value };
@@ -572,6 +704,7 @@
     addChargerForm.addEventListener("submit", async (evt) => {
       evt.preventDefault();
       settingsError.textContent = "";
+      const isEdit = editingChargerName !== null;
       const body = {
         name: document.getElementById("new-name").value.trim(),
         host: document.getElementById("new-host").value.trim(),
@@ -579,28 +712,30 @@
         unit_id: Number(document.getElementById("new-unit-id").value || 255),
       };
       try {
-        const res = await fetch("/api/chargers", {
-          method: "POST",
-          headers: settingsHeaders(),
-          body: JSON.stringify(body),
-        });
+        const res = await fetch(
+          isEdit ? "/api/chargers/" + encodeURIComponent(editingChargerName) : "/api/chargers",
+          {
+            method: isEdit ? "PUT" : "POST",
+            headers: settingsHeaders(),
+            body: JSON.stringify(body),
+          }
+        );
         const data = await res.json();
         if (!res.ok) {
-          settingsError.textContent = data.error || "Failed to add charger";
+          settingsError.textContent = data.error || (isEdit ? "Failed to save charger" : "Failed to add charger");
           return;
         }
-        addChargerForm.reset();
-        document.getElementById("new-port").value = "502";
-        document.getElementById("new-unit-id").value = "255";
+        stopEdit();
         await poll();
         renderSettingsChargers(latestChargers);
       } catch (err) {
-        settingsError.textContent = "Connection lost while adding charger";
+        settingsError.textContent = isEdit ? "Connection lost while saving charger" : "Connection lost while adding charger";
       }
     });
 
     settingsBtn.addEventListener("click", () => {
       settingsError.textContent = "";
+      stopEdit();
       renderSettingsChargers(latestChargers);
       settingsDisabledNote.hidden = settingsEnabled;
       addChargerForm.hidden = !settingsEnabled;

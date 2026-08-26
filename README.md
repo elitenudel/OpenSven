@@ -101,19 +101,21 @@ network, but nothing proxies it to the internet unless you deliberately set
 that up yourself - keep it that way, since viewing the dashboard itself
 still has no authentication.
 
-### Settings menu (add/remove chargers)
+### Settings menu (add/edit/remove chargers)
 
-The gear icon opens a settings panel where chargers can be added or removed
-without editing `config.yaml` or restarting the service - a newly added one
-is best-effort connected immediately (tolerating an unreachable host, same
-as at startup - it's simply retried every poll cycle) and joins the
-priority list at the end (lowest priority); removing one turns it off
-(`eMS max current` set to 0) before dropping it. Both actions persist to
+The gear icon opens a settings panel where chargers can be added, edited or
+removed without touching `config.yaml` or restarting the service. A newly
+added charger is best-effort connected immediately (tolerating an
+unreachable host, same as at startup - it's simply retried every poll
+cycle) and joins the priority list at the end (lowest priority); removing
+one turns it off (`eMS max current` set to 0) before dropping it. Editing
+one only reconnects if its host/port/unit ID actually changed - renaming a
+charger in place doesn't touch its connection. All three actions persist to
 `defa.chargers_file` immediately.
 
 This is disabled by default. Set `web.settings_token` in `config.yaml` to a
 secret value to enable it - the dashboard then asks for that same token
-(stored in the browser's local storage) before allowing an add or remove.
+(stored in the browser's local storage) before allowing any of the above.
 Anyone who can already reach the dashboard can see the token prompt, so
 treat it as a guard against accidental/automated changes from other devices
 on your LAN, not as real access control.

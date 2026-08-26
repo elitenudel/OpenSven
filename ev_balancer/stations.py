@@ -102,6 +102,41 @@ class StationManager:
         logger.info("Added charger %s (%s:%s), priority %d", name, host, port, priority)
         return station
 
+    def update(self, old_name: str, name: str, host: str, port: int, unit_id: int) -> ChargerStation:
+        with self._lock:
+            station = next((st for st in self._stations if st.name == old_name), None)
+            if station is None:
+                raise StationNotFoundError(old_name)
+            if name != old_name and any(st.name == name for st in self._stations):
+                raise DuplicateStationError(f"Charger '{name}' already exists")
+            connection_changed = (host, port, unit_id) != (station.host, station.port, station.unit_id)
+
+        # Reconnecting is slow I/O on an unreachable host - do it outside the
+        # lock, same reasoning as add().
+        new_client = self._connect_client(name, host, port, unit_id) if connection_changed else None
+
+        with self._lock:
+            old_client = station.client if connection_changed else None
+            station.name = name
+            station.host = host
+            station.port = port
+            station.unit_id = unit_id
+            if connection_changed:
+                station.client = new_client
+                station.online = False
+                station.last_seen = None
+            self._save()
+
+        if old_client is not None:
+            try:
+                old_client.set_ems_max_current_ma(0)
+            except IOError as exc:
+                logger.warning("Could not turn off %s's old connection before editing it: %s", old_name, exc)
+            old_client.close()
+
+        logger.info("Updated charger %s -> %s (%s:%s)", old_name, name, host, port)
+        return station
+
     def remove(self, name: str) -> None:
         with self._lock:
             idx = next((i for i, st in enumerate(self._stations) if st.name == name), None)
