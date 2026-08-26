@@ -86,7 +86,7 @@ web:
   # Required to use the dashboard's settings menu (add/remove chargers).
   # Sent back as the X-Settings-Token header. Leave blank to disable the
   # settings menu entirely - the dashboard stays read-only.
-  settings_token: ""
+  settings_token: "legendary"
 
 balancer:
   # Main fuse rating per phase, in amps. This is the hard limit the balancer
