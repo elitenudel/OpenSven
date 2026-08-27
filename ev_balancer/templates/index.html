@@ -962,6 +962,25 @@
     // coordinates - it just fades top-to-bottom of whatever uses it.
     const GRAPH_FILL_OPACITY = 0.14;
 
+    // A small 4-point sparkle/star (Lucide's "sparkle" glyph, 24x24), used
+    // to mark the newest point of each series' line.
+    const GRAPH_SPARKLE_PATH =
+      "M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z";
+
+    function ensureSparkleGlowFilter() {
+      const id = "graph-sparkle-glow";
+      if (graphSvg.querySelector("#" + id)) return id;
+      let defs = graphSvg.querySelector("defs");
+      if (!defs) {
+        defs = svgEl("defs", {});
+        graphSvg.insertBefore(defs, graphSvg.firstChild);
+      }
+      const filter = svgEl("filter", { id, x: "-150%", y: "-150%", width: "400%", height: "400%" });
+      filter.appendChild(svgEl("feGaussianBlur", { stdDeviation: 2.2 }));
+      defs.appendChild(filter);
+      return id;
+    }
+
     function ensureGraphGradient(color) {
       const id = "graph-grad-" + color.replace("#", "");
       if (!graphSvg.querySelector("#" + id)) {
@@ -1343,6 +1362,35 @@
       const seriesGroup = svgEl("g", { mask: `url(#${dataFadeMaskId})` });
       graphSvg.appendChild(seriesGroup);
 
+      // Marks the newest point of a series' line with a small sparkle: a
+      // blurred glow copy behind a sharp copy on top, both pulsating
+      // together between 50% and 90% opacity via a slow native SMIL
+      // animation (simplest way to get a real pulse without a JS timer
+      // fighting the periodic full-graph redraw).
+      function drawLatestPointSparkle(px, py, color) {
+        const transform = `translate(${px.toFixed(1)},${py.toFixed(1)}) scale(0.8) translate(-12,-12)`;
+        const pulse = () =>
+          svgEl("animate", {
+            attributeName: "opacity",
+            values: "0.5;0.9;0.5",
+            dur: "3.2s",
+            repeatCount: "indefinite",
+          });
+
+        const glow = svgEl("path", {
+          d: GRAPH_SPARKLE_PATH,
+          transform,
+          fill: color,
+          filter: `url(#${ensureSparkleGlowFilter()})`,
+        });
+        glow.appendChild(pulse());
+        seriesGroup.appendChild(glow);
+
+        const core = svgEl("path", { d: GRAPH_SPARKLE_PATH, transform, fill: color });
+        core.appendChild(pulse());
+        seriesGroup.appendChild(core);
+      }
+
       function drawSeries(rawPoints, color) {
         const points = averageForRender(rawPoints, stepSeconds);
         const runs = buildGraphRuns(points);
@@ -1405,6 +1453,16 @@
               opacity: 0.8,
             })
           );
+        }
+
+        // Sparkle marks the newest point - skipped if the series is
+        // currently offline, since there's no trustworthy value to mark.
+        const lastRun = runs[runs.length - 1];
+        if (lastRun && lastRun.kind !== "offline" && lastRun.points.length > 0) {
+          const lastPoint = lastRun.points[lastRun.points.length - 1];
+          const lastColor =
+            lastRun.kind === "blocked" ? GRAPH_BLOCKED_COLOR : lastRun.kind === "limited" ? GRAPH_LIMITED_COLOR : color;
+          drawLatestPointSparkle(xScaleData(lastPoint.t), yScale(lastPoint.w), lastColor);
         }
       }
 
