@@ -338,11 +338,23 @@ def run(config: dict, shelly_only: bool = False) -> None:
             )
 
         if history_recorder is not None:
+            # A charger counts as "limited" (as opposed to fully "blocked",
+            # i.e. not enabled at all) when it's actively enabled but the
+            # shared ceiling the balancer is offering is below what this
+            # station's own installation could otherwise take - i.e. the
+            # balancer, not the charger's own hardware, is the thing
+            # currently capping it.
+            current_allocated_a = controller.committed_a or 0.0
             history_recorder.record(
                 timestamp=time.time(),
                 main_fuse_w=amps_to_watts(*last_main_fuse_a, voltage=history_voltage),
                 chargers={
-                    st.name: (amps_to_watts(*st.actual_a, voltage=history_voltage), st.enabled, st.online)
+                    st.name: (
+                        amps_to_watts(*st.actual_a, voltage=history_voltage),
+                        st.enabled,
+                        st.online,
+                        st.enabled and current_allocated_a < st.installation_max_a,
+                    )
                     for st in stations
                 },
             )

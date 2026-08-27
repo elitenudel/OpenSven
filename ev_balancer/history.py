@@ -39,12 +39,15 @@ class HistoryRecorder:
         self._lock = threading.Lock()
         self._directory.mkdir(parents=True, exist_ok=True)
 
-    def record(self, timestamp: float, main_fuse_w: float, chargers: dict[str, tuple[float, bool, bool]]) -> None:
-        """chargers maps charger name -> (watts, enabled, online)."""
+    def record(self, timestamp: float, main_fuse_w: float, chargers: dict[str, tuple[float, bool, bool, bool]]) -> None:
+        """chargers maps charger name -> (watts, enabled, online, limited)."""
         record = {
             "t": round(timestamp),
             "fuse_w": round(main_fuse_w),
-            "c": {name: [round(w), bool(enabled), bool(online)] for name, (w, enabled, online) in chargers.items()},
+            "c": {
+                name: [round(w), bool(enabled), bool(online), bool(limited)]
+                for name, (w, enabled, online, limited) in chargers.items()
+            },
         }
         chunk_path = self._chunk_path(timestamp)
         with self._lock:

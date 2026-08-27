@@ -125,13 +125,21 @@ on your LAN, not as real access control.
 The chart icon next to the gear opens a graph of the last 24 hours: one
 line per charger plus the main fuse, all in watts (amps are converted using
 `history.voltage`, since a shared watts axis needs only one number per
-charger instead of three per-phase amp readings). A charger's line is
-dashed while the balancer has it enabled=false ("blocked" - withheld
-allocation, not necessarily unplugged) and replaced with a small red marker
-along the bottom while it's unreachable (`online: false`), so a stretch
-with no real data doesn't get silently plotted as 0W. A gap in a charger's
-own history is different from a gap in *all* of them at once - the latter
-means the balancer process itself wasn't running.
+charger instead of three per-phase amp readings). A charger's line changes
+color by state instead of always being its own assigned color:
+
+- **orange** - "blocked": `enabled: false`, the balancer isn't letting it
+  draw any current at all right now (not necessarily unplugged).
+- **yellow** - "limited": enabled and drawing current, but the shared
+  ceiling the balancer is currently offering is below what this station's
+  own installation could otherwise take - the balancer, not the charger's
+  hardware, is what's capping it.
+- **red marker** along the bottom - unreachable (`online: false`), so a
+  stretch with no real data doesn't get silently plotted as 0W.
+
+A gap in one charger's own history is different from a gap in *all* of
+them at once - the latter means the balancer process itself wasn't
+running.
 
 Data recording is controlled by `history.*` in `config.yaml`: a sample is
 taken every `defa.poll_interval_seconds` cycle (same rate the balancer
