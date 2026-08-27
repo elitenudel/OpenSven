@@ -962,10 +962,24 @@
     // coordinates - it just fades top-to-bottom of whatever uses it.
     const GRAPH_FILL_OPACITY = 0.14;
 
-    // A small 4-point sparkle/star (Lucide's "sparkle" glyph, 24x24), used
-    // to mark the newest point of each series' line.
-    const GRAPH_SPARKLE_PATH =
-      "M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z";
+    // A 4-point sparkle/star centered on (0,0): tips at N/E/S/W (outerR)
+    // and a pinched waist at the diagonals (innerR). Shrinking innerR
+    // relative to outerR slims the arms down without changing the star's
+    // overall tip-to-tip span in either direction.
+    function graphSparklePath(outerR, innerR) {
+      return [
+        `M0,${-outerR}`,
+        `L${innerR},${-innerR}`,
+        `L${outerR},0`,
+        `L${innerR},${innerR}`,
+        `L0,${outerR}`,
+        `L${-innerR},${innerR}`,
+        `L${-outerR},0`,
+        `L${-innerR},${-innerR}`,
+        "Z",
+      ].join(" ");
+    }
+    const GRAPH_SPARKLE_PATH = graphSparklePath(5, 1);
 
     function ensureSparkleGlowFilter() {
       const id = "graph-sparkle-glow";
@@ -1374,10 +1388,12 @@
         // mechanical.
         const begin = (seriesIndex * 0.55).toFixed(2) + "s";
         const pos = `translate(${px.toFixed(1)},${py.toFixed(1)})`;
-        const localTransform = "scale(0.5) translate(-12,-12)";
 
         // Sonar-style ping: a ring that expands outward while fading out,
-        // repeating underneath the sparkle itself.
+        // repeating underneath the sparkle itself. The ring keeps growing
+        // for the whole cycle, but opacity is front-loaded via keyTimes so
+        // it visibly fades out well before the ring finishes expanding,
+        // rather than a fade that lasts exactly as long as the growth.
         const ring = svgEl("circle", {
           cx: 0,
           cy: 0,
@@ -1393,7 +1409,8 @@
         ring.appendChild(
           svgEl("animate", {
             attributeName: "opacity",
-            values: "0.6;0",
+            values: "0.4;0;0",
+            keyTimes: "0;0.35;1",
             dur: "2.6s",
             begin,
             repeatCount: "indefinite",
@@ -1419,18 +1436,17 @@
         );
 
         const pulse = () =>
-          svgEl("animate", { attributeName: "opacity", values: "0.5;0.9;0.5", dur: "3.2s", begin, repeatCount: "indefinite" });
+          svgEl("animate", { attributeName: "opacity", values: "0.35;0.6;0.35", dur: "3.2s", begin, repeatCount: "indefinite" });
 
         const glow = svgEl("path", {
           d: GRAPH_SPARKLE_PATH,
-          transform: localTransform,
           fill: color,
           filter: `url(#${ensureSparkleGlowFilter()})`,
         });
         glow.appendChild(pulse());
         breatheGroup.appendChild(glow);
 
-        const core = svgEl("path", { d: GRAPH_SPARKLE_PATH, transform: localTransform, fill: color });
+        const core = svgEl("path", { d: GRAPH_SPARKLE_PATH, fill: color });
         core.appendChild(pulse());
         breatheGroup.appendChild(core);
 
