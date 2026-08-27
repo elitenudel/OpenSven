@@ -1207,6 +1207,27 @@
       return Math.round(wattsToAmpsPerPhase(w)) + "A";
     }
 
+    // Renders a "20.0kW"/"29A"-style string as a <text> with the trailing
+    // unit letters in a dimmer tspan, so the number itself reads as the
+    // primary value and the unit as a quieter label next to it - no x/y on
+    // the tspan, so text-anchor on the parent still positions the whole
+    // string as one block, same as a plain single-fill label would.
+    function svgUnitLabel(text, attrs) {
+      const label = svgEl("text", attrs);
+      const match = text.match(/^(.*?)([a-zA-Z]+)$/);
+      if (!match) {
+        label.textContent = text;
+        return label;
+      }
+      const value = svgEl("tspan", {});
+      value.textContent = match[1];
+      const unit = svgEl("tspan", { fill: "#5c5c5c" });
+      unit.textContent = match[2];
+      label.appendChild(value);
+      label.appendChild(unit);
+      return label;
+    }
+
     function formatClock(t) {
       // A named IANA zone (not a fixed UTC offset) is what makes this
       // switch between standard and summer/daylight-saving time on its
@@ -1221,17 +1242,37 @@
 
     // Ticks land on clean clock boundaries for each range rather than N
     // evenly-spaced fractions of tMin..tMax, so the axis reads "14:00,
-    // 16:00, 18:00" instead of arbitrary times like "14:07". Computed from
-    // the raw epoch rather than a Date's local getHours()/getMinutes() -
-    // that's only exact for whole-hour-offset zones (true for
-    // Europe/Stockholm and the vast majority of zones, not the ~30/45min-
-    // offset handful like India or Nepal), but matches how every other
-    // epoch-anchored thing in this graph (averageForRender's slots) is
-    // already done.
+    // 16:00, 18:00" instead of arbitrary times like "14:07".
     function graphTickIntervalSeconds(hours) {
       if (hours <= 0.25) return 60; // 15m view -> every minute
       if (hours <= 1) return 600; // 1h view -> every 10 minutes
       return 7200; // 24h view -> every other whole hour
+    }
+
+    // UTC offset (seconds, positive east of UTC) of `timeZone` at a given
+    // instant. Aligning ticks to "clean" boundaries has to snap in *local*
+    // time, not raw UTC epoch - naively flooring the UTC epoch to a 2-hour
+    // multiple lands on clean UTC hours, which are only clean local hours
+    // too when the zone's offset is itself an even number of hours. Half
+    // the year, Europe/Stockholm's is +1 (CET) - odd - which is exactly
+    // what put every 24h tick an hour off. Computed per-call rather than
+    // cached since it changes across a DST transition.
+    function tzOffsetSeconds(epochSeconds, timeZone) {
+      const date = new Date(epochSeconds * 1000);
+      const dtf = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        hourCycle: "h23",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+      const parts = {};
+      for (const p of dtf.formatToParts(date)) parts[p.type] = p.value;
+      const asUTC = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+      return Math.round((asUTC - date.getTime()) / 1000);
     }
 
     function addLegendEntry(name, color) {
@@ -1445,7 +1486,7 @@
         const w = yMax * frac;
         const yy = yScale(w);
         drawFadedGridline(marginLeft, width - marginRight, yy, "#242424", 1, 1);
-        const label = svgEl("text", {
+        const label = svgUnitLabel(formatWatts(w), {
           x: marginLeft - 8,
           y: yy + 4,
           fill: "#999",
@@ -1453,14 +1494,13 @@
           "font-family": GRAPH_FONT_FAMILY,
           "text-anchor": "end",
         });
-        label.textContent = formatWatts(w);
         graphSvg.appendChild(label);
 
         // Same gridline, right side, shown as roughly what one phase would
         // read in amps - reusing the left axis's own gridlines rather than
         // drawing a second independent set keeps the two units pinned to
         // the same horizontal lines instead of a confusing offset pair.
-        const ampsLabel = svgEl("text", {
+        const ampsLabel = svgUnitLabel(formatAmps(w), {
           x: width - marginRight + 8,
           y: yy + 4,
           fill: "#999",
@@ -1468,7 +1508,6 @@
           "font-family": GRAPH_FONT_FAMILY,
           "text-anchor": "start",
         });
-        ampsLabel.textContent = formatAmps(w);
         graphSvg.appendChild(ampsLabel);
       });
 
@@ -1487,13 +1526,33 @@
       // the plot edge.
       const tickIntervalSeconds = graphTickIntervalSeconds(graphHours);
       const tickEdgeFade = 0.05;
-      const firstTickT = Math.ceil(tMin / tickIntervalSeconds) * tickIntervalSeconds;
+      // Boundaries are snapped in local time (see tzOffsetSeconds) then
+      // shifted back to real UTC epoch seconds for xScale, which only
+      // understands the latter.
+      const tickTzOffset = tzOffsetSeconds(tMax, dashboardTimezone);
+      const firstTickT =
+        Math.ceil((tMin + tickTzOffset) / tickIntervalSeconds) * tickIntervalSeconds - tickTzOffset;
       for (let t = firstTickT; t <= tMax; t += tickIntervalSeconds) {
         const xx = xScale(t);
         const frac = (xx - marginLeft) / plotW;
         const opacity = Math.max(0, Math.min(frac / tickEdgeFade, (1 - frac) / tickEdgeFade, 1));
         if (opacity <= 0.02) continue;
         const anchor = frac < tickEdgeFade ? "start" : frac > 1 - tickEdgeFade ? "end" : "middle";
+
+        // A small dot right on the axis baseline pins down the exact x
+        // position the label refers to - useful since the label itself
+        // sits below the axis and (for the edge-anchored ones especially)
+        // its text doesn't visually start/center/end exactly on that point.
+        graphSvg.appendChild(
+          svgEl("circle", {
+            cx: xx,
+            cy: height - marginBottom,
+            r: 1.5,
+            fill: "#777",
+            opacity: opacity.toFixed(2),
+          })
+        );
+
         const label = svgEl("text", {
           x: xx,
           y: height - marginBottom + 16,
