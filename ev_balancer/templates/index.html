@@ -1246,6 +1246,11 @@
 
       const xScale = (t) => marginLeft + ((t - tMin) / (tMax - tMin)) * plotW;
       const yScale = (w) => marginTop + plotH - (w / yMax) * plotH;
+      // Data points map into only the first 95% of the plot width (the
+      // gridlines/time-ticks below still use the full-width xScale) so the
+      // newest point always lands inside the fully-opaque area instead of
+      // the fading-out zone at the very right edge.
+      const xScaleData = (t) => marginLeft + ((t - tMin) / (tMax - tMin)) * plotW * 0.95;
 
       [0, 0.5, 1].forEach((frac) => {
         const w = yMax * frac;
@@ -1303,6 +1308,41 @@
         graphSvg.appendChild(label);
       }
 
+      // All data (lines, area fills, offline markers) is drawn into this
+      // masked group so the oldest data fades in over the same first 5% of
+      // plot width the gridlines themselves fade in over, instead of
+      // starting abruptly at full opacity right where the gridline is
+      // still fading in.
+      const dataFadeWidth = plotW * 0.05;
+      let defs = graphSvg.querySelector("defs");
+      if (!defs) {
+        defs = svgEl("defs", {});
+        graphSvg.insertBefore(defs, graphSvg.firstChild);
+      }
+      const dataFadeGradId = "graph-data-fade-grad";
+      const dataFadeGrad = svgEl("linearGradient", {
+        id: dataFadeGradId,
+        gradientUnits: "userSpaceOnUse",
+        x1: marginLeft,
+        y1: 0,
+        x2: marginLeft + dataFadeWidth,
+        y2: 0,
+      });
+      dataFadeGrad.appendChild(svgEl("stop", { offset: "0%", "stop-color": "black" }));
+      dataFadeGrad.appendChild(svgEl("stop", { offset: "100%", "stop-color": "white" }));
+      defs.appendChild(dataFadeGrad);
+
+      const dataFadeMaskId = "graph-data-fade-mask";
+      const dataFadeMask = svgEl("mask", { id: dataFadeMaskId, maskUnits: "userSpaceOnUse", x: 0, y: 0, width, height });
+      dataFadeMask.appendChild(svgEl("rect", { x: 0, y: 0, width, height, fill: "white" }));
+      dataFadeMask.appendChild(
+        svgEl("rect", { x: marginLeft, y: 0, width: dataFadeWidth, height, fill: `url(#${dataFadeGradId})` })
+      );
+      defs.appendChild(dataFadeMask);
+
+      const seriesGroup = svgEl("g", { mask: `url(#${dataFadeMaskId})` });
+      graphSvg.appendChild(seriesGroup);
+
       function drawSeries(rawPoints, color) {
         const points = averageForRender(rawPoints, stepSeconds);
         const runs = buildGraphRuns(points);
@@ -1311,11 +1351,11 @@
           if (run.kind === "offline") {
             const t0 = run.points[0].t;
             const t1 = run.points[run.points.length - 1].t;
-            graphSvg.appendChild(
+            seriesGroup.appendChild(
               svgEl("rect", {
-                x: xScale(t0),
+                x: xScaleData(t0),
                 y: height - marginBottom - 4,
-                width: Math.max(xScale(t1) - xScale(t0), 2),
+                width: Math.max(xScaleData(t1) - xScaleData(t0), 2),
                 height: 3,
                 rx: 1.5,
                 fill: GRAPH_OFFLINE_COLOR,
@@ -1339,7 +1379,7 @@
 
           if (drawPoints.length < 2) continue;
           const d = drawPoints
-            .map((p, idx) => (idx === 0 ? "M" : "L") + xScale(p.t).toFixed(1) + "," + yScale(p.w).toFixed(1))
+            .map((p, idx) => (idx === 0 ? "M" : "L") + xScaleData(p.t).toFixed(1) + "," + yScale(p.w).toFixed(1))
             .join(" ");
 
           // Area fill uses the series' own base color regardless of this
@@ -1348,11 +1388,11 @@
           const baselineY = height - marginBottom;
           const areaD =
             d +
-            ` L${xScale(drawPoints[drawPoints.length - 1].t).toFixed(1)},${baselineY}` +
-            ` L${xScale(drawPoints[0].t).toFixed(1)},${baselineY} Z`;
-          graphSvg.appendChild(svgEl("path", { d: areaD, fill: `url(#${ensureGraphGradient(color)})`, stroke: "none" }));
+            ` L${xScaleData(drawPoints[drawPoints.length - 1].t).toFixed(1)},${baselineY}` +
+            ` L${xScaleData(drawPoints[0].t).toFixed(1)},${baselineY} Z`;
+          seriesGroup.appendChild(svgEl("path", { d: areaD, fill: `url(#${ensureGraphGradient(color)})`, stroke: "none" }));
 
-          graphSvg.appendChild(
+          seriesGroup.appendChild(
             svgEl("path", {
               d,
               fill: "none",
