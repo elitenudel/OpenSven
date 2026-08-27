@@ -55,6 +55,55 @@ class HistoryRecorder:
                 f.write(json.dumps(record) + "\n")
             self._enforce_limit()
 
+    def purge_charger(self, name: str) -> None:
+        """Permanently deletes every recorded sample for `name` from every
+        chunk file - called when a charger is *removed*, never when it's
+        only edited (including a rename), since editing must never lose
+        history. Rewrites each chunk in place (only the ones that actually
+        mention `name`) rather than a full rebuild, since files can span
+        many other chargers plus the main fuse reading, none of which this
+        should touch."""
+        with self._lock:
+            for path, _ in self._chunk_files():
+                self._purge_charger_from_file(path, name)
+
+    def _purge_charger_from_file(self, path: Path, name: str) -> None:
+        try:
+            with open(path) as f:
+                lines = f.readlines()
+        except OSError as exc:
+            logger.warning("Could not read history file %s while purging %s: %s", path, name, exc)
+            return
+
+        changed = False
+        kept_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                rec = json.loads(stripped)
+            except ValueError:
+                # Same torn-write possibility read_since() tolerates -
+                # left untouched rather than dropped.
+                kept_lines.append(line if line.endswith("\n") else line + "\n")
+                continue
+            if name in rec.get("c", {}):
+                del rec["c"][name]
+                changed = True
+            kept_lines.append(json.dumps(rec) + "\n")
+
+        if not changed:
+            return
+
+        tmp_path = path.with_name(path.name + ".tmp")
+        try:
+            with open(tmp_path, "w") as f:
+                f.writelines(kept_lines)
+            os.replace(tmp_path, path)
+        except OSError as exc:
+            logger.warning("Could not rewrite history file %s while purging %s: %s", path, name, exc)
+
     def read_since(self, since_timestamp: float) -> list[dict]:
         since_chunk = int(since_timestamp // _CHUNK_SECONDS)
         results: list[dict] = []

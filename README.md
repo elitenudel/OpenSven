@@ -149,6 +149,16 @@ once exceeded, whole hour-files are deleted oldest-first, which is
 important given how limited a Raspberry Pi's SD card usually is. Set
 `history.enabled: false` to turn recording off entirely.
 
+Removing a charger from the settings menu deletes its recorded history too
+(editing/renaming one never does). A charger removed before this cleanup
+existed leaves its old history orphaned - still showing up in the graph's
+legend even though it's gone from the dashboard itself - which a one-off
+command cleans up by name:
+
+```
+python -m ev_balancer.main --config config.yaml --purge-charger-history "Old Charger Name"
+```
+
 The graph's clock labels (24-hour format) use `web.timezone` - an IANA zone
 name (default `Europe/Stockholm`), not a fixed UTC offset, so it switches
 between standard and summer/daylight-saving time on its own via the

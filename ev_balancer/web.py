@@ -156,6 +156,12 @@ def create_app(
             station_manager.remove(name)
         except StationNotFoundError:
             return jsonify({"error": f"Charger '{name}' not found"}), 404
+        # Only on an actual removal, never from update_charger()'s rename/
+        # edit path above - editing must never lose history, even across a
+        # rename, but a removed charger's old data has nothing left to mean
+        # anything by and would otherwise linger in the graph forever.
+        if history_recorder is not None:
+            history_recorder.purge_charger(name)
         return jsonify({"ok": True})
 
     return app

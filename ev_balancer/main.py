@@ -374,6 +374,13 @@ def main() -> None:
         action="store_true",
         help="Don't connect to any DEFA station; just log what the balancer would set, based on Shelly readings alone.",
     )
+    parser.add_argument(
+        "--purge-charger-history",
+        metavar="NAME",
+        help="Delete all recorded history for charger NAME and exit (doesn't start the balancer). "
+        "For a charger removed via the dashboard before that started cleaning up its own history "
+        "automatically, or any other orphaned name no longer in defa.chargers_file.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -382,6 +389,20 @@ def main() -> None:
     )
 
     config = load_config(args.config)
+
+    if args.purge_charger_history:
+        history_cfg = config.get("history", {})
+        if not history_cfg.get("enabled", True):
+            print("history.enabled is false in this config - nothing to purge.")
+            return
+        recorder = HistoryRecorder(
+            directory=history_cfg.get("directory", "state/history"),
+            max_size_bytes=int(history_cfg.get("max_size_mb", 1024) * 1024 * 1024),
+        )
+        recorder.purge_charger(args.purge_charger_history)
+        print(f"Purged all recorded history for charger '{args.purge_charger_history}'.")
+        return
+
     run(config, shelly_only=args.shelly_only)
 
 
