@@ -1,0 +1,26 @@
+[Unit]
+Description=Caddy (ev-balancer public HTTPS)
+Documentation=https://caddyserver.com/docs/
+After=network.target network-online.target
+Requires=network-online.target
+
+[Service]
+Type=notify
+User=caddy
+Group=caddy
+ExecStart=/usr/local/bin/caddy run --environ --config /etc/caddy/Caddyfile
+ExecReload=/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile --force
+EnvironmentFile=/etc/caddy/caddy.env
+TimeoutStopSec=5s
+LimitNOFILE=1048576
+LimitNPROC=512
+
+# Neither the public port (8443) nor the internal proxy target (127.0.0.1)
+# is a privileged (<1024) port, so this needs no special capability -
+# ordinary unprivileged-user confinement is enough.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

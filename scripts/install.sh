@@ -96,3 +96,7 @@ echo "Edit config:     $INSTALL_DIR/config.yaml, then: systemctl restart ${SERVI
 echo "Deploy an update: git pull (in $SOURCE_DIR), then re-run: sudo $0"
 echo "                  (config.yaml gets reset to the repo's version every time - reapply your"
 echo "                  settings from the config.yaml.bak.* file it leaves behind)"
+echo
+echo "This re-run already carried forward $INSTALL_DIR/state (history + chargers.yaml)"
+echo "from any previous install at the same path - nothing further needed for that."
+echo "To also expose the dashboard on the internet over HTTPS: sudo ./scripts/setup-public-https.sh"

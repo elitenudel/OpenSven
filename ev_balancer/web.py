@@ -12,6 +12,7 @@ import time
 from typing import Optional
 
 from flask import Flask, jsonify, render_template, request
+from waitress import serve as waitress_serve
 
 from .history import HistoryRecorder
 from .state import BalancerState
@@ -172,7 +173,15 @@ def start_in_background(
 ) -> None:
     app = create_app(state, station_manager, history_recorder, settings_token, timezone, history_voltage)
 
+    # waitress rather than Flask's own app.run(): the latter is Werkzeug's
+    # dev server, which logs a startup warning against exactly this
+    # (serving real traffic) and isn't meant to. Runs in-thread rather than
+    # as a separate process/service (unlike a typical gunicorn deployment)
+    # because this thread shares BalancerState/StationManager directly with
+    # the balancer loop in the same process - a second OS process would
+    # have no access to that live state at all, and multiple worker
+    # processes would each try to poll/write the chargers independently.
     def _serve() -> None:
-        app.run(host=host, port=port, threaded=True, use_reloader=False)
+        waitress_serve(app, host=host, port=port, threads=4, _quiet=True)
 
     threading.Thread(target=_serve, daemon=True, name="ev-balancer-web").start()

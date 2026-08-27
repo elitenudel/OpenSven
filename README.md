@@ -186,6 +186,45 @@ restart ev-balancer.service`. To remove everything: `sudo
 ./scripts/uninstall.sh` (asks before deleting the app directory or the
 `evbalancer` user, since those are destructive).
 
+Re-running `install.sh` over an existing install (e.g. after `git pull`)
+already carries `state/` (history + `chargers.yaml`) forward untouched, so
+upgrading in place needs no separate data migration step.
+
+## Public HTTPS access
+
+```
+sudo CLOUDFLARE_API_TOKEN=xxxx ./scripts/setup-public-https.sh
+```
+
+Exposes the dashboard at `https://power.kjellner.net:8443/` (a non-standard
+port since nothing on this network multiplexes port 443 across domains -
+forward that port on your router to this machine). It installs
+[Caddy](https://caddyserver.com/) - built with the
+[Cloudflare DNS module](https://github.com/caddy-dns/cloudflare) so it can
+prove domain ownership via a DNS-01 challenge instead of the usual HTTP-01
+one, since HTTP-01 needs an internet-reachable port 80, which this setup
+doesn't have - as a systemd service that terminates TLS with an
+automatically-issued and auto-renewed Let's Encrypt certificate, then
+reverse-proxies to the dashboard already running on `127.0.0.1:8080` (via
+`install.sh`, above - run that first).
+
+Needs a Cloudflare API token scoped to **Zone / DNS / Edit** on just the
+`kjellner.net` zone (create one at
+https://dash.cloudflare.com/profile/api-tokens). It's stored on the machine
+at `/etc/caddy/caddy.env` (mode 600, owned by the dedicated `caddy` user)
+for Caddy to read on each renewal - weigh that against how much you trust
+this device, since a compromise of it exposes the token. The dashboard's
+own `web.settings_token` auth is a
+static bearer token too (see above) - fine for guarding against accidental
+LAN changes, but now also the only thing standing between the internet and
+the settings menu once this is live, so treat it as low-assurance
+protection, not real access control.
+
+```
+journalctl -u caddy -f -o cat   # watch it live
+sudo ./scripts/remove-public-https.sh
+```
+
 ## Assumptions worth double-checking against your setup
 
 - Shelly is on the **"triphase" EM profile** (component `em:0`), served at

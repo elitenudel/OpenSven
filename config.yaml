@@ -73,7 +73,11 @@ defa:
 # the balancer's in-memory state directly - no extra Modbus/Shelly polling,
 # and never a second writer). LAN-only by default: 0.0.0.0 makes it
 # reachable from other devices on your network, but nothing proxies it to
-# the internet unless you deliberately set that up separately.
+# the internet unless you deliberately set that up separately (see
+# scripts/setup-public-https.sh, which reverse-proxies this port over
+# HTTPS - if you use it and don't also want this raw HTTP port reachable
+# from outside your LAN, set host to 127.0.0.1 and only forward the public
+# HTTPS port on your router).
 web:
   # Turns the dashboard on/off. When false, none of the other web.* settings
   # have any effect and nothing is served.

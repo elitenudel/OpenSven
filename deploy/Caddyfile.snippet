@@ -1,0 +1,14 @@
+# Caddy's automatic HTTP->HTTPS redirect normally listens on :80 for that
+# alone - fatal here (not just a skipped feature) since there's no port 80
+# access at all, so it's disabled globally rather than left to fail on
+# every startup.
+{
+	auto_https disable_redirects
+}
+
+__DOMAIN__:__PUBLIC_PORT__ {
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	}
+	reverse_proxy 127.0.0.1:__APP_PORT__
+}
