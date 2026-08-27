@@ -1367,31 +1367,77 @@
       // together between 50% and 90% opacity via a slow native SMIL
       // animation (simplest way to get a real pulse without a JS timer
       // fighting the periodic full-graph redraw).
-      function drawLatestPointSparkle(px, py, color) {
-        const transform = `translate(${px.toFixed(1)},${py.toFixed(1)}) scale(0.8) translate(-12,-12)`;
-        const pulse = () =>
+      function drawLatestPointSparkle(px, py, color, seriesIndex) {
+        // Each series starts its cycle at a different offset so several
+        // sparkles pulsing at once don't all beat in lockstep - a small
+        // amount of staggering is what reads as "alive" rather than
+        // mechanical.
+        const begin = (seriesIndex * 0.55).toFixed(2) + "s";
+        const pos = `translate(${px.toFixed(1)},${py.toFixed(1)})`;
+        const localTransform = "scale(0.5) translate(-12,-12)";
+
+        // Sonar-style ping: a ring that expands outward while fading out,
+        // repeating underneath the sparkle itself.
+        const ring = svgEl("circle", {
+          cx: 0,
+          cy: 0,
+          r: 2.5,
+          fill: "none",
+          stroke: color,
+          "stroke-width": 1.2,
+          transform: pos,
+        });
+        ring.appendChild(
+          svgEl("animate", { attributeName: "r", values: "2.5;11", dur: "2.6s", begin, repeatCount: "indefinite" })
+        );
+        ring.appendChild(
           svgEl("animate", {
             attributeName: "opacity",
-            values: "0.5;0.9;0.5",
-            dur: "3.2s",
+            values: "0.6;0",
+            dur: "2.6s",
+            begin,
             repeatCount: "indefinite",
-          });
+          })
+        );
+        seriesGroup.appendChild(ring);
+
+        // Sparkle itself: a breathing scale (in a transform-only inner
+        // group, so the scale animation has no existing transform of its
+        // own to fight with) plus the usual opacity pulse, together
+        // reading as more "alive" than either alone.
+        const breatheGroup = svgEl("g", { transform: pos });
+        breatheGroup.appendChild(
+          svgEl("animateTransform", {
+            attributeName: "transform",
+            type: "scale",
+            values: "1;1.18;1",
+            additive: "sum",
+            dur: "3.2s",
+            begin,
+            repeatCount: "indefinite",
+          })
+        );
+
+        const pulse = () =>
+          svgEl("animate", { attributeName: "opacity", values: "0.5;0.9;0.5", dur: "3.2s", begin, repeatCount: "indefinite" });
 
         const glow = svgEl("path", {
           d: GRAPH_SPARKLE_PATH,
-          transform,
+          transform: localTransform,
           fill: color,
           filter: `url(#${ensureSparkleGlowFilter()})`,
         });
         glow.appendChild(pulse());
-        seriesGroup.appendChild(glow);
+        breatheGroup.appendChild(glow);
 
-        const core = svgEl("path", { d: GRAPH_SPARKLE_PATH, transform, fill: color });
+        const core = svgEl("path", { d: GRAPH_SPARKLE_PATH, transform: localTransform, fill: color });
         core.appendChild(pulse());
-        seriesGroup.appendChild(core);
+        breatheGroup.appendChild(core);
+
+        seriesGroup.appendChild(breatheGroup);
       }
 
-      function drawSeries(rawPoints, color) {
+      function drawSeries(rawPoints, color, seriesIndex) {
         const points = averageForRender(rawPoints, stepSeconds);
         const runs = buildGraphRuns(points);
         for (let i = 0; i < runs.length; i++) {
@@ -1462,14 +1508,15 @@
           const lastPoint = lastRun.points[lastRun.points.length - 1];
           const lastColor =
             lastRun.kind === "blocked" ? GRAPH_BLOCKED_COLOR : lastRun.kind === "limited" ? GRAPH_LIMITED_COLOR : color;
-          drawLatestPointSparkle(xScaleData(lastPoint.t), yScale(lastPoint.w), lastColor);
+          drawLatestPointSparkle(xScaleData(lastPoint.t), yScale(lastPoint.w), lastColor, seriesIndex);
         }
       }
 
       if (!graphHiddenSeries.has("Main Fuse")) {
         drawSeries(
           samples.map((s) => ({ t: s.t, w: s.fuse_w || 0, kind: "on" })),
-          GRAPH_FUSE_COLOR
+          GRAPH_FUSE_COLOR,
+          0
         );
       }
       addLegendEntry("Main Fuse", GRAPH_FUSE_COLOR);
@@ -1485,7 +1532,7 @@
             const kind = !online ? "offline" : !enabled ? "blocked" : limited ? "limited" : "on";
             points.push({ t: s.t, w, kind });
           }
-          drawSeries(points, color);
+          drawSeries(points, color, i + 1);
         }
         addLegendEntry(name, color);
       });
