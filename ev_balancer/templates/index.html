@@ -1236,6 +1236,24 @@
         graphSvg.appendChild(ampsLabel);
       });
 
+      // One unlabeled, more transparent line centered in each of the two
+      // gaps left by the labeled gridlines above (0-50% and 50-100%) - just
+      // a subtle visual aid, not another set of numbers to read.
+      [0.25, 0.75].forEach((frac) => {
+        const yy = yScale(yMax * frac);
+        graphSvg.appendChild(
+          svgEl("line", {
+            x1: marginLeft,
+            x2: width - marginRight,
+            y1: yy,
+            y2: yy,
+            stroke: "#1f1f1f",
+            "stroke-width": 1,
+            opacity: 0.4,
+          })
+        );
+      });
+
       const tickCount = 5;
       for (let i = 0; i < tickCount; i++) {
         const t = tMin + (i / (tickCount - 1)) * (tMax - tMin);
