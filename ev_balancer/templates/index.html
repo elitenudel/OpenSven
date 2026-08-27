@@ -619,12 +619,17 @@
 </head>
 <body>
   <button class="settings-btn graph-btn" id="graph-btn" title="Charging history" aria-label="Charging history">
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <svg viewBox="0 0 24 24" width="27" height="27" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <polyline points="3,17 9,10 13,14 21,4"></polyline>
       <polyline points="15,4 21,4 21,10"></polyline>
     </svg>
   </button>
-  <button class="settings-btn" id="settings-btn" title="Settings" aria-label="Settings">&#9881;</button>
+  <button class="settings-btn" id="settings-btn" title="Settings" aria-label="Settings">
+    <svg viewBox="0 0 24 24" width="27" height="27" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"></circle>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+    </svg>
+  </button>
 
   <h1>EV Load Balancer</h1>
   <p class="subtitle" id="subtitle">Connecting&hellip;</p>
@@ -957,11 +962,8 @@
     // coordinates - it just fades top-to-bottom of whatever uses it.
     const GRAPH_FILL_OPACITY = 0.14;
 
-    // reversed=true builds a gradient that's opaque at the *bottom* instead
-    // of the top - used for the offline glow, which has no line to hang
-    // off of and instead anchors to the baseline.
-    function ensureGraphGradient(color, reversed) {
-      const id = "graph-grad-" + color.replace("#", "") + (reversed ? "-rev" : "");
+    function ensureGraphGradient(color) {
+      const id = "graph-grad-" + color.replace("#", "");
       if (!graphSvg.querySelector("#" + id)) {
         let defs = graphSvg.querySelector("defs");
         if (!defs) {
@@ -969,10 +971,8 @@
           graphSvg.insertBefore(defs, graphSvg.firstChild);
         }
         const gradient = svgEl("linearGradient", { id, x1: "0", y1: "0", x2: "0", y2: "1" });
-        const nearOffset = reversed ? "100%" : "0%";
-        const farOffset = reversed ? "0%" : "100%";
-        gradient.appendChild(svgEl("stop", { offset: nearOffset, "stop-color": color, "stop-opacity": GRAPH_FILL_OPACITY }));
-        gradient.appendChild(svgEl("stop", { offset: farOffset, "stop-color": color, "stop-opacity": 0 }));
+        gradient.appendChild(svgEl("stop", { offset: "0%", "stop-color": color, "stop-opacity": GRAPH_FILL_OPACITY }));
+        gradient.appendChild(svgEl("stop", { offset: "100%", "stop-color": color, "stop-opacity": 0 }));
         defs.appendChild(gradient);
       }
       return id;
@@ -1261,28 +1261,11 @@
           if (run.kind === "offline") {
             const t0 = run.points[0].t;
             const t1 = run.points[run.points.length - 1].t;
-            const x0 = xScale(t0);
-            const x1 = xScale(t1);
-            const baselineY = height - marginBottom;
-            const glowHeight = Math.min(plotH * 0.25, 60);
-            // Soft glow anchored to the baseline (there's no line height to
-            // hang a normal top-down fade off of here, since offline has no
-            // trustworthy value to plot), plus the small solid marker on
-            // top for a precise "this happened here" indicator.
             graphSvg.appendChild(
               svgEl("rect", {
-                x: x0,
-                y: baselineY - glowHeight,
-                width: Math.max(x1 - x0, 2),
-                height: glowHeight,
-                fill: `url(#${ensureGraphGradient(GRAPH_OFFLINE_COLOR, true)})`,
-              })
-            );
-            graphSvg.appendChild(
-              svgEl("rect", {
-                x: x0,
-                y: baselineY - 4,
-                width: Math.max(x1 - x0, 2),
+                x: xScale(t0),
+                y: height - marginBottom - 4,
+                width: Math.max(xScale(t1) - xScale(t0), 2),
                 height: 3,
                 rx: 1.5,
                 fill: GRAPH_OFFLINE_COLOR,
@@ -1309,18 +1292,15 @@
             .map((p, idx) => (idx === 0 ? "M" : "L") + xScale(p.t).toFixed(1) + "," + yScale(p.w).toFixed(1))
             .join(" ");
 
-          // Blocked segments fill with the same orange as their line;
-          // everything else (on/limited) keeps the series' own base color
-          // rather than flickering between every state's tint.
-          const areaColor = run.kind === "blocked" ? GRAPH_BLOCKED_COLOR : color;
+          // Area fill uses the series' own base color regardless of this
+          // run's state color, so it reads as one calm backdrop per series
+          // instead of flickering between blocked/limited/normal tints.
           const baselineY = height - marginBottom;
           const areaD =
             d +
             ` L${xScale(drawPoints[drawPoints.length - 1].t).toFixed(1)},${baselineY}` +
             ` L${xScale(drawPoints[0].t).toFixed(1)},${baselineY} Z`;
-          graphSvg.appendChild(
-            svgEl("path", { d: areaD, fill: `url(#${ensureGraphGradient(areaColor)})`, stroke: "none" })
-          );
+          graphSvg.appendChild(svgEl("path", { d: areaD, fill: `url(#${ensureGraphGradient(color)})`, stroke: "none" }));
 
           graphSvg.appendChild(
             svgEl("path", {
