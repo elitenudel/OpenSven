@@ -372,6 +372,10 @@
     display: block;
   }
 
+  #graph-svg text {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
   .graph-offline-dot {
     display: inline-block;
     width: 0.6rem;
@@ -896,8 +900,12 @@
     let graphHours = 24;
     let lastGraphSamples = [];
     const graphHiddenSeries = new Set();
-    const GRAPH_COLORS = ["#2ecc71", "#3498db", "#f1c40f", "#9b59b6", "#1abc9c", "#e67e22", "#5dade2", "#af7ac5"];
+    // Yellow is reserved for the "blocked" state below, so it's left out
+    // of the per-charger rotation to avoid a charger's own color looking
+    // identical to that state indicator.
+    const GRAPH_COLORS = ["#2ecc71", "#3498db", "#9b59b6", "#1abc9c", "#e67e22", "#5dade2", "#af7ac5"];
     const GRAPH_OFFLINE_COLOR = "#e74c3c";
+    const GRAPH_BLOCKED_COLOR = "#f1c40f";
     const GRAPH_FUSE_COLOR = "#e5e5e5";
 
     function svgEl(tag, attrs) {
@@ -1035,7 +1043,13 @@
       for (const p of sorted) {
         const brokenByGap = current && p.t - current.points[current.points.length - 1].t > maxGap;
         if (!current || p.kind !== current.kind || brokenByGap) {
-          current = { kind: p.kind, points: [] };
+          // brokenByGap (or this being the very first run) means an actual
+          // break in the data - drawSeries won't visually bridge into a run
+          // that starts this way. A run that starts only because the kind
+          // changed (e.g. on -> blocked) is still contiguous in time, and
+          // gets bridged so the line doesn't show a gap at every state
+          // change - only where one genuinely exists.
+          current = { kind: p.kind, points: [], brokenByGap: !current || brokenByGap };
           runs.push(current);
         }
         current.points.push(p);
@@ -1122,7 +1136,9 @@
 
       function drawSeries(rawPoints, color) {
         const points = averageForRender(rawPoints, stepSeconds);
-        for (const run of buildGraphRuns(points)) {
+        const runs = buildGraphRuns(points);
+        for (let i = 0; i < runs.length; i++) {
+          const run = runs[i];
           if (run.kind === "offline") {
             const t0 = run.points[0].t;
             const t1 = run.points[run.points.length - 1].t;
@@ -1139,15 +1155,28 @@
             );
             continue;
           }
-          if (run.points.length < 2) continue;
-          const d = run.points
-            .map((p, i) => (i === 0 ? "M" : "L") + xScale(p.t).toFixed(1) + "," + yScale(p.w).toFixed(1))
+
+          // Bridge in the previous run's last point when this run only
+          // started because the kind changed (on <-> blocked) rather than
+          // a genuine gap, and the previous run wasn't offline (whose
+          // value isn't trustworthy to draw a line through). Without this,
+          // every single state change - not just real gaps - broke the
+          // line into disconnected segments, since each run is its own
+          // <path> and a change-only run got no visual continuity with
+          // what came before it.
+          const prev = i > 0 ? runs[i - 1] : null;
+          const bridge = !run.brokenByGap && prev && prev.kind !== "offline" && prev.points.length > 0;
+          const drawPoints = bridge ? [prev.points[prev.points.length - 1], ...run.points] : run.points;
+
+          if (drawPoints.length < 2) continue;
+          const d = drawPoints
+            .map((p, idx) => (idx === 0 ? "M" : "L") + xScale(p.t).toFixed(1) + "," + yScale(p.w).toFixed(1))
             .join(" ");
           graphSvg.appendChild(
             svgEl("path", {
               d,
               fill: "none",
-              stroke: color,
+              stroke: run.kind === "blocked" ? GRAPH_BLOCKED_COLOR : color,
               "stroke-width": 1,
               "stroke-linejoin": "round",
               "stroke-linecap": "round",
