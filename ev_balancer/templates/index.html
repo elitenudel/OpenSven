@@ -948,43 +948,50 @@
       graphLegend.appendChild(item);
     }
 
-    // Averages points down to at most `targetBuckets` for rendering only -
-    // the stored history is untouched. Without this, a wide time range with
-    // way more samples than horizontal pixels draws a rapid up/down zigzag
-    // that visually reads as a thick line even though every stroke is 1px.
-    // A no-op when there are already fewer points than buckets, so a short
-    // range (e.g. 15m) still renders at full resolution.
-    function downsampleForRender(points, targetBuckets) {
-      if (points.length <= targetBuckets) return points;
-      const sorted = points.slice().sort((a, b) => a.t - b.t);
-      const tStart = sorted[0].t;
-      const tEnd = sorted[sorted.length - 1].t;
-      const bucketSize = Math.max(tEnd - tStart, 1) / targetBuckets;
-      // Non-offline states are averaged for a smooth trend line, but if any
-      // point in a bucket was offline (or, failing that, blocked) that
-      // takes priority - a brief real outage must not get smoothed away.
-      const kindPriority = { offline: 2, blocked: 1, on: 0 };
-
-      const buckets = [];
-      let currentBucketIndex = -1;
-      for (const p of sorted) {
-        const bucketIndex = Math.min(targetBuckets - 1, Math.floor((p.t - tStart) / bucketSize));
-        if (bucketIndex !== currentBucketIndex) {
-          buckets.push([]);
-          currentBucketIndex = bucketIndex;
-        }
-        buckets[buckets.length - 1].push(p);
+    // Picks the median gap between consecutive (sorted, deduplicated)
+    // timestamps, then snaps it to a "nice" value - the raw median jitters
+    // a little from one fetch to the next even though the real recording
+    // cadence hasn't changed, and that jitter alone was enough to shift
+    // every decimation grid cell (see decimateForRender) on every redraw.
+    const NICE_INTERVALS_S = [1, 2, 5, 10, 15, 20, 30, 60, 90, 120, 180, 300, 600, 900, 1800, 3600];
+    function estimateSampleIntervalSeconds(times) {
+      if (times.length < 2) return NICE_INTERVALS_S[0];
+      const gaps = [];
+      for (let i = 1; i < times.length; i++) {
+        const gap = times[i] - times[i - 1];
+        if (gap > 0) gaps.push(gap);
       }
+      if (gaps.length === 0) return NICE_INTERVALS_S[0];
+      gaps.sort((a, b) => a - b);
+      const median = gaps[Math.floor(gaps.length / 2)];
+      let best = NICE_INTERVALS_S[0];
+      for (const candidate of NICE_INTERVALS_S) {
+        if (Math.abs(candidate - median) < Math.abs(best - median)) best = candidate;
+      }
+      return best;
+    }
 
-      return buckets.map((group) => {
-        const avgT = group.reduce((sum, p) => sum + p.t, 0) / group.length;
-        const avgW = group.reduce((sum, p) => sum + p.w, 0) / group.length;
-        let kind = group[0].kind;
-        for (const p of group) {
-          if (kindPriority[p.kind] > kindPriority[kind]) kind = p.kind;
+    // Keeps one real sample per `stepSeconds`-wide slot instead of
+    // averaging - no interpolated/rounded values, and (unlike bucketing
+    // anchored to this fetch's own min/max timestamp) slot boundaries are
+    // fixed to the epoch, so a given historical instant always lands in
+    // the same slot. That's what makes a point (or a run's start/end)
+    // stable across the periodic refresh instead of jumping around
+    // retroactively, and what keeps genuinely continuous stretches from
+    // fragmenting into disconnected segments.
+    function decimateForRender(points, stepSeconds) {
+      if (stepSeconds <= 0) return points;
+      const sorted = points.slice().sort((a, b) => a.t - b.t);
+      const kept = [];
+      let lastSlot = null;
+      for (const p of sorted) {
+        const slot = Math.floor(p.t / stepSeconds);
+        if (slot !== lastSlot) {
+          kept.push(p);
+          lastSlot = slot;
         }
-        return { t: avgT, w: avgW, kind };
-      });
+      }
+      return kept;
     }
 
     // Splits one series' points into contiguous runs of the same "kind"
@@ -1037,6 +1044,14 @@
         return;
       }
 
+      // The 15m view is never decimated (see strideSamples below) and looks
+      // right, so every other range is thinned down to about the same
+      // point count rather than however many raw samples actually exist -
+      // a longer range just covers that same point count over more time.
+      const rawIntervalSeconds = estimateSampleIntervalSeconds(samples.map((s) => s.t));
+      const strideSamples = Math.max(1, Math.round(graphHours * 4));
+      const stepSeconds = strideSamples * rawIntervalSeconds;
+
       const chargerNames = [];
       for (const s of samples) {
         for (const name of Object.keys(s.c || {})) {
@@ -1082,10 +1097,8 @@
         graphSvg.appendChild(label);
       }
 
-      const targetBuckets = Math.max(1, Math.round(plotW));
-
       function drawSeries(rawPoints, color) {
-        const points = downsampleForRender(rawPoints, targetBuckets);
+        const points = decimateForRender(rawPoints, stepSeconds);
         for (const run of buildGraphRuns(points)) {
           if (run.kind === "offline") {
             const t0 = run.points[0].t;
