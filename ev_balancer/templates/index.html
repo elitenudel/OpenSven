@@ -927,6 +927,12 @@
     const GRAPH_BLOCKED_COLOR = "#e67e22";
     const GRAPH_LIMITED_COLOR = "#f1c40f";
     const GRAPH_FUSE_COLOR = "#e5e5e5";
+    // Set directly on every text element rather than relying only on the
+    // #graph-svg text stylesheet rule - some browsers resolve font-family
+    // for SVG <text> through a different path than regular HTML text, so
+    // an attribute set right on the element is the more reliable of the
+    // two rather than an alternative to it.
+    const GRAPH_FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 
     function svgEl(tag, attrs) {
       const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
@@ -1078,8 +1084,15 @@
     }
 
     function renderGraph(samples) {
-      const width = 800;
-      const height = 420;
+      // Match the viewBox to the SVG's actual rendered pixel size (rather
+      // than a fixed 800x420 with preserveAspectRatio="none" stretching to
+      // fit) so 1 viewBox unit is always exactly 1 CSS pixel - otherwise
+      // every dialog width stretches text and strokes by a different,
+      // non-uniform x/y factor, which is what was making the axis labels
+      // look wide and distorted.
+      const width = graphSvg.clientWidth || 800;
+      const height = graphSvg.clientHeight || 420;
+      graphSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
       const marginLeft = 46;
       const marginRight = 12;
       const marginTop = 12;
@@ -1095,7 +1108,14 @@
       const tMax = nowS;
 
       if (samples.length === 0) {
-        const msg = svgEl("text", { x: width / 2, y: height / 2, fill: "#999", "font-size": 13, "text-anchor": "middle" });
+        const msg = svgEl("text", {
+          x: width / 2,
+          y: height / 2,
+          fill: "#999",
+          "font-size": 13,
+          "font-family": GRAPH_FONT_FAMILY,
+          "text-anchor": "middle",
+        });
         msg.textContent = "No history recorded yet.";
         graphSvg.appendChild(msg);
         return;
@@ -1139,7 +1159,14 @@
         graphSvg.appendChild(
           svgEl("line", { x1: marginLeft, x2: width - marginRight, y1: yy, y2: yy, stroke: "#1f1f1f", "stroke-width": 1 })
         );
-        const label = svgEl("text", { x: marginLeft - 8, y: yy + 4, fill: "#999", "font-size": 10, "text-anchor": "end" });
+        const label = svgEl("text", {
+          x: marginLeft - 8,
+          y: yy + 4,
+          fill: "#999",
+          "font-size": 10,
+          "font-family": GRAPH_FONT_FAMILY,
+          "text-anchor": "end",
+        });
         label.textContent = formatWatts(w);
         graphSvg.appendChild(label);
       });
@@ -1149,7 +1176,14 @@
         const t = tMin + (i / (tickCount - 1)) * (tMax - tMin);
         const xx = xScale(t);
         const anchor = i === 0 ? "start" : i === tickCount - 1 ? "end" : "middle";
-        const label = svgEl("text", { x: xx, y: height - marginBottom + 16, fill: "#999", "font-size": 10, "text-anchor": anchor });
+        const label = svgEl("text", {
+          x: xx,
+          y: height - marginBottom + 16,
+          fill: "#999",
+          "font-size": 10,
+          "font-family": GRAPH_FONT_FAMILY,
+          "text-anchor": anchor,
+        });
         label.textContent = formatClock(t);
         graphSvg.appendChild(label);
       }
