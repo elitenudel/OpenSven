@@ -26,6 +26,7 @@ def create_app(
     history_recorder: Optional[HistoryRecorder],
     settings_token: str,
     timezone: str,
+    history_voltage: float,
 ) -> Flask:
     app = Flask(__name__)
 
@@ -85,7 +86,9 @@ def create_app(
         except ValueError:
             hours = _DEFAULT_HISTORY_HOURS
         since = time.time() - max(hours, 0.0) * 3600
-        return jsonify({"enabled": True, "samples": history_recorder.read_since(since)})
+        return jsonify(
+            {"enabled": True, "voltage": history_voltage, "samples": history_recorder.read_since(since)}
+        )
 
     def _parse_charger_payload(payload: dict) -> tuple[str, str, int, int]:
         name = str(payload.get("name", "")).strip()
@@ -163,10 +166,11 @@ def start_in_background(
     history_recorder: Optional[HistoryRecorder],
     settings_token: str,
     timezone: str,
+    history_voltage: float,
     host: str,
     port: int,
 ) -> None:
-    app = create_app(state, station_manager, history_recorder, settings_token, timezone)
+    app = create_app(state, station_manager, history_recorder, settings_token, timezone, history_voltage)
 
     def _serve() -> None:
         app.run(host=host, port=port, threaded=True, use_reloader=False)

@@ -751,6 +751,7 @@
     let settingsEnabled = false;
     let editingChargerName = null;
     let dashboardTimezone = "Europe/Stockholm";
+    let graphVoltage = 230;
 
     const TOKEN_STORAGE_KEY = "evb-settings-token";
     tokenInput.value = localStorage.getItem(TOKEN_STORAGE_KEY) || "";
@@ -949,6 +950,27 @@
       return el;
     }
 
+    // A soft area fill under each line reads nicer than a flat black
+    // background, fading from a faint tint of the line's own color down to
+    // fully transparent at 0W. objectBoundingBox (the default) scales the
+    // gradient to each filled shape's own box, so this needs no per-shape
+    // coordinates - it just fades top-to-bottom of whatever uses it.
+    function ensureGraphGradient(color) {
+      const id = "graph-grad-" + color.replace("#", "");
+      if (!graphSvg.querySelector("#" + id)) {
+        let defs = graphSvg.querySelector("defs");
+        if (!defs) {
+          defs = svgEl("defs", {});
+          graphSvg.insertBefore(defs, graphSvg.firstChild);
+        }
+        const gradient = svgEl("linearGradient", { id, x1: "0", y1: "0", x2: "0", y2: "1" });
+        gradient.appendChild(svgEl("stop", { offset: "0%", "stop-color": color, "stop-opacity": 0.22 }));
+        gradient.appendChild(svgEl("stop", { offset: "100%", "stop-color": color, "stop-opacity": 0 }));
+        defs.appendChild(gradient);
+      }
+      return id;
+    }
+
     function graphNiceMax(value) {
       if (value <= 0) return 1000;
       const magnitude = Math.pow(10, Math.floor(Math.log10(value)));
@@ -963,6 +985,18 @@
 
     function formatWatts(w) {
       return w >= 1000 ? (w / 1000).toFixed(1) + "kW" : Math.round(w) + "W";
+    }
+
+    // Watts here are already the *combined* draw across all three phases
+    // (see amps_to_watts server-side), so converting back to a per-phase
+    // amp figure divides out all three, not just the voltage - e.g. 11kW
+    // at 230V is 16A per phase, not 48A.
+    function wattsToAmpsPerPhase(w) {
+      return w / (graphVoltage * 3);
+    }
+
+    function formatAmps(w) {
+      return Math.round(wattsToAmpsPerPhase(w)) + "A";
     }
 
     function formatClock(t) {
@@ -1103,7 +1137,7 @@
       const height = graphSvg.clientHeight || 420;
       graphSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
       const marginLeft = 46;
-      const marginRight = 12;
+      const marginRight = 42;
       const marginTop = 12;
       const marginBottom = 28;
       const plotW = width - marginLeft - marginRight;
@@ -1178,6 +1212,21 @@
         });
         label.textContent = formatWatts(w);
         graphSvg.appendChild(label);
+
+        // Same gridline, right side, shown as roughly what one phase would
+        // read in amps - reusing the left axis's own gridlines rather than
+        // drawing a second independent set keeps the two units pinned to
+        // the same horizontal lines instead of a confusing offset pair.
+        const ampsLabel = svgEl("text", {
+          x: width - marginRight + 8,
+          y: yy + 4,
+          fill: "#999",
+          "font-size": 10,
+          "font-family": GRAPH_FONT_FAMILY,
+          "text-anchor": "start",
+        });
+        ampsLabel.textContent = formatAmps(w);
+        graphSvg.appendChild(ampsLabel);
       });
 
       const tickCount = 5;
@@ -1235,6 +1284,17 @@
           const d = drawPoints
             .map((p, idx) => (idx === 0 ? "M" : "L") + xScale(p.t).toFixed(1) + "," + yScale(p.w).toFixed(1))
             .join(" ");
+
+          // Area fill uses the series' own base color regardless of this
+          // run's state color, so it reads as one calm backdrop per series
+          // instead of flickering between blocked/limited/normal tints.
+          const baselineY = height - marginBottom;
+          const areaD =
+            d +
+            ` L${xScale(drawPoints[drawPoints.length - 1].t).toFixed(1)},${baselineY}` +
+            ` L${xScale(drawPoints[0].t).toFixed(1)},${baselineY} Z`;
+          graphSvg.appendChild(svgEl("path", { d: areaD, fill: `url(#${ensureGraphGradient(color)})`, stroke: "none" }));
+
           graphSvg.appendChild(
             svgEl("path", {
               d,
@@ -1293,6 +1353,7 @@
           return;
         }
         graphError.textContent = "";
+        if (data.voltage) graphVoltage = data.voltage;
         lastGraphSamples = data.samples;
         renderGraph(data.samples);
       } catch (err) {
