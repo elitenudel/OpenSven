@@ -278,12 +278,6 @@
     width: min(95vw, 60rem);
   }
 
-  .graph-subtitle {
-    font-size: 0.75rem;
-    font-weight: 400;
-    color: #999;
-  }
-
   .graph-header {
     display: flex;
     align-items: baseline;
@@ -341,6 +335,23 @@
     display: flex;
     align-items: center;
     gap: 0.4rem;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    opacity: 1;
+    transition: opacity 0.15s ease;
+  }
+
+  .graph-legend-item:hover {
+    color: #fff;
+  }
+
+  .graph-legend-item.muted {
+    opacity: 0.4;
   }
 
   .graph-legend-swatch {
@@ -357,7 +368,7 @@
 
   #graph-svg {
     width: 100%;
-    height: 18rem;
+    height: 24rem;
     display: block;
   }
 
@@ -651,18 +662,18 @@
 
   <dialog id="graph-dialog" class="app-dialog">
     <div class="graph-header">
-      <h2>Charging history <span class="graph-subtitle" id="graph-subtitle">last 24h</span></h2>
+      <h2>Charging history</h2>
       <div class="graph-range-toggle" id="graph-range-toggle">
-        <button type="button" class="graph-range-btn" data-hours="0.25" data-label="last 15m">15m</button>
-        <button type="button" class="graph-range-btn" data-hours="1" data-label="last 1h">1h</button>
-        <button type="button" class="graph-range-btn active" data-hours="24" data-label="last 24h">24h</button>
+        <button type="button" class="graph-range-btn" data-hours="0.25">15m</button>
+        <button type="button" class="graph-range-btn" data-hours="1">1h</button>
+        <button type="button" class="graph-range-btn active" data-hours="24">24h</button>
       </div>
     </div>
 
     <div class="graph-legend" id="graph-legend"></div>
 
     <div class="graph-wrap">
-      <svg id="graph-svg" viewBox="0 0 800 320" preserveAspectRatio="none"></svg>
+      <svg id="graph-svg" viewBox="0 0 800 420" preserveAspectRatio="none"></svg>
     </div>
 
     <p class="field-hint">
@@ -695,7 +706,6 @@
     const graphSvg = document.getElementById("graph-svg");
     const graphLegend = document.getElementById("graph-legend");
     const graphError = document.getElementById("graph-error");
-    const graphSubtitle = document.getElementById("graph-subtitle");
     const graphRangeToggle = document.getElementById("graph-range-toggle");
     const tokenInput = document.getElementById("token-input");
     const settingsChargersList = document.getElementById("settings-chargers-list");
@@ -883,6 +893,8 @@
     settingsClose.addEventListener("click", () => settingsDialog.close());
 
     let graphHours = 24;
+    let lastGraphSamples = [];
+    const graphHiddenSeries = new Set();
     const GRAPH_COLORS = ["#2ecc71", "#3498db", "#f1c40f", "#9b59b6", "#1abc9c", "#e67e22", "#5dade2", "#af7ac5"];
     const GRAPH_OFFLINE_COLOR = "#e74c3c";
     const GRAPH_FUSE_COLOR = "#e5e5e5";
@@ -914,8 +926,10 @@
     }
 
     function addLegendEntry(name, color) {
-      const item = document.createElement("div");
-      item.className = "graph-legend-item";
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "graph-legend-item" + (graphHiddenSeries.has(name) ? " muted" : "");
+      item.title = "Click to toggle " + name;
       const swatch = document.createElement("span");
       swatch.className = "graph-legend-swatch";
       swatch.style.background = color;
@@ -923,6 +937,14 @@
       label.textContent = name;
       item.appendChild(swatch);
       item.appendChild(label);
+      item.addEventListener("click", () => {
+        if (graphHiddenSeries.has(name)) {
+          graphHiddenSeries.delete(name);
+        } else {
+          graphHiddenSeries.add(name);
+        }
+        renderGraph(lastGraphSamples);
+      });
       graphLegend.appendChild(item);
     }
 
@@ -954,7 +976,7 @@
 
     function renderGraph(samples) {
       const width = 800;
-      const height = 320;
+      const height = 420;
       const marginLeft = 46;
       const marginRight = 12;
       const marginTop = 12;
@@ -983,10 +1005,14 @@
         }
       }
 
+      // Only visible series set the scale, so hiding the main fuse (or any
+      // other large series) zooms in on whatever's left - that's the point
+      // of being able to focus on a single charger.
       let maxW = 0;
       for (const s of samples) {
-        maxW = Math.max(maxW, s.fuse_w || 0);
+        if (!graphHiddenSeries.has("Main Fuse")) maxW = Math.max(maxW, s.fuse_w || 0);
         for (const name of chargerNames) {
+          if (graphHiddenSeries.has(name)) continue;
           const c = s.c[name];
           if (c) maxW = Math.max(maxW, c[0]);
         }
@@ -1044,7 +1070,7 @@
               d,
               fill: "none",
               stroke: color,
-              "stroke-width": 2,
+              "stroke-width": 1.25,
               "stroke-linejoin": "round",
               "stroke-linecap": "round",
               "stroke-dasharray": run.kind === "blocked" ? "5 4" : "none",
@@ -1054,22 +1080,26 @@
         }
       }
 
-      drawSeries(
-        samples.map((s) => ({ t: s.t, w: s.fuse_w || 0, kind: "on" })),
-        GRAPH_FUSE_COLOR
-      );
+      if (!graphHiddenSeries.has("Main Fuse")) {
+        drawSeries(
+          samples.map((s) => ({ t: s.t, w: s.fuse_w || 0, kind: "on" })),
+          GRAPH_FUSE_COLOR
+        );
+      }
       addLegendEntry("Main Fuse", GRAPH_FUSE_COLOR);
 
       chargerNames.forEach((name, i) => {
         const color = GRAPH_COLORS[i % GRAPH_COLORS.length];
-        const points = [];
-        for (const s of samples) {
-          const c = s.c[name];
-          if (!c) continue;
-          const [w, enabled, online] = c;
-          points.push({ t: s.t, w, kind: !online ? "offline" : enabled ? "on" : "blocked" });
+        if (!graphHiddenSeries.has(name)) {
+          const points = [];
+          for (const s of samples) {
+            const c = s.c[name];
+            if (!c) continue;
+            const [w, enabled, online] = c;
+            points.push({ t: s.t, w, kind: !online ? "offline" : enabled ? "on" : "blocked" });
+          }
+          drawSeries(points, color);
         }
-        drawSeries(points, color);
         addLegendEntry(name, color);
       });
     }
@@ -1091,6 +1121,7 @@
           return;
         }
         graphError.textContent = "";
+        lastGraphSamples = data.samples;
         renderGraph(data.samples);
       } catch (err) {
         graphError.textContent = "Could not load charging history.";
@@ -1103,7 +1134,6 @@
       const btn = evt.target.closest(".graph-range-btn");
       if (!btn) return;
       graphHours = Number(btn.dataset.hours);
-      graphSubtitle.textContent = btn.dataset.label;
       for (const b of graphRangeToggle.querySelectorAll(".graph-range-btn")) {
         b.classList.toggle("active", b === btn);
       }
