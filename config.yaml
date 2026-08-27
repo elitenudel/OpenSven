@@ -87,6 +87,10 @@ web:
   # Sent back as the X-Settings-Token header. Leave blank to disable the
   # settings menu entirely - the dashboard stays read-only.
   settings_token: "legendary"
+  # IANA timezone used for clock times in the charging history graph (a
+  # named zone like this, rather than a fixed UTC offset, is what makes it
+  # switch between standard and summer/daylight-saving time on its own).
+  timezone: "Europe/Stockholm"
 
 balancer:
   # Main fuse rating per phase, in amps. This is the hard limit the balancer

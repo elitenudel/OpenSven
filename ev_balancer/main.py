@@ -97,7 +97,8 @@ def run(config: dict, shelly_only: bool = False) -> None:
         web_host = web_cfg.get("host", "0.0.0.0")
         web_port = web_cfg.get("port", 8080)
         settings_token = web_cfg.get("settings_token", "")
-        start_web_in_background(state, station_manager, history_recorder, settings_token, web_host, web_port)
+        timezone = web_cfg.get("timezone", "Europe/Stockholm")
+        start_web_in_background(state, station_manager, history_recorder, settings_token, timezone, web_host, web_port)
         logger.info("Web dashboard listening on http://%s:%s", web_host, web_port)
         if not settings_token:
             logger.info("Dashboard settings menu (add/remove chargers) is disabled - set web.settings_token to enable it")

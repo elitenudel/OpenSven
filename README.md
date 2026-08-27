@@ -141,6 +141,11 @@ once exceeded, whole hour-files are deleted oldest-first, which is
 important given how limited a Raspberry Pi's SD card usually is. Set
 `history.enabled: false` to turn recording off entirely.
 
+The graph's clock labels (24-hour format) use `web.timezone` - an IANA zone
+name (default `Europe/Stockholm`), not a fixed UTC offset, so it switches
+between standard and summer/daylight-saving time on its own via the
+browser's own timezone database.
+
 ## Installing as a background service
 
 ```

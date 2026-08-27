@@ -718,6 +718,7 @@
     let latestChargers = [];
     let settingsEnabled = false;
     let editingChargerName = null;
+    let dashboardTimezone = "Europe/Stockholm";
 
     const TOKEN_STORAGE_KEY = "evb-settings-token";
     tokenInput.value = localStorage.getItem(TOKEN_STORAGE_KEY) || "";
@@ -922,7 +923,15 @@
     }
 
     function formatClock(t) {
-      return new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      // A named IANA zone (not a fixed UTC offset) is what makes this
+      // switch between standard and summer/daylight-saving time on its
+      // own - the browser's own timezone database handles that part.
+      return new Date(t * 1000).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: dashboardTimezone,
+      });
     }
 
     function addLegendEntry(name, color) {
@@ -971,27 +980,41 @@
       return best;
     }
 
-    // Keeps one real sample per `stepSeconds`-wide slot instead of
-    // averaging - no interpolated/rounded values, and (unlike bucketing
-    // anchored to this fetch's own min/max timestamp) slot boundaries are
-    // fixed to the epoch, so a given historical instant always lands in
-    // the same slot. That's what makes a point (or a run's start/end)
-    // stable across the periodic refresh instead of jumping around
-    // retroactively, and what keeps genuinely continuous stretches from
-    // fragmenting into disconnected segments.
-    function decimateForRender(points, stepSeconds) {
+    // Averages every point falling in a `stepSeconds`-wide slot into one -
+    // smoother than just picking one raw sample per slot, without adding
+    // any more resolution than decimation already settled on. Unlike the
+    // original bucketing (anchored to this fetch's own min/max timestamp,
+    // which reshuffled every boundary on each refresh), slots are fixed to
+    // the epoch and a point's x position is the slot's own fixed center
+    // rather than an average of whichever raw timestamps landed in it - so
+    // a given historical instant always lands in, and renders at, the same
+    // place. Only the newest (still-filling) slot can move between
+    // refreshes, the same way a live candle updates until its period
+    // closes; every earlier slot is done accumulating and stays put.
+    function averageForRender(points, stepSeconds) {
       if (stepSeconds <= 0) return points;
       const sorted = points.slice().sort((a, b) => a.t - b.t);
-      const kept = [];
-      let lastSlot = null;
+      const kindPriority = { offline: 2, blocked: 1, on: 0 };
+
+      const slots = [];
+      let currentSlotIndex = null;
       for (const p of sorted) {
-        const slot = Math.floor(p.t / stepSeconds);
-        if (slot !== lastSlot) {
-          kept.push(p);
-          lastSlot = slot;
+        const slotIndex = Math.floor(p.t / stepSeconds);
+        if (slotIndex !== currentSlotIndex) {
+          slots.push({ index: slotIndex, points: [] });
+          currentSlotIndex = slotIndex;
         }
+        slots[slots.length - 1].points.push(p);
       }
-      return kept;
+
+      return slots.map(({ index, points: group }) => {
+        const avgW = group.reduce((sum, p) => sum + p.w, 0) / group.length;
+        let kind = group[0].kind;
+        for (const p of group) {
+          if (kindPriority[p.kind] > kindPriority[kind]) kind = p.kind;
+        }
+        return { t: (index + 0.5) * stepSeconds, w: avgW, kind };
+      });
     }
 
     // Splits one series' points into contiguous runs of the same "kind"
@@ -1098,7 +1121,7 @@
       }
 
       function drawSeries(rawPoints, color) {
-        const points = decimateForRender(rawPoints, stepSeconds);
+        const points = averageForRender(rawPoints, stepSeconds);
         for (const run of buildGraphRuns(points)) {
           if (run.kind === "offline") {
             const t0 = run.points[0].t;
@@ -1216,6 +1239,7 @@
       try {
         const res = await fetch("/api/status");
         const data = await res.json();
+        if (data.timezone) dashboardTimezone = data.timezone;
 
         if (!data.ready) {
           subtitle.textContent = "Waiting for first reading…";

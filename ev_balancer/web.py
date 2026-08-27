@@ -25,6 +25,7 @@ def create_app(
     station_manager: StationManager,
     history_recorder: Optional[HistoryRecorder],
     settings_token: str,
+    timezone: str,
 ) -> Flask:
     app = Flask(__name__)
 
@@ -39,13 +40,14 @@ def create_app(
     def api_status():
         snapshot = state.get()
         if snapshot is None:
-            return jsonify({"ready": False})
+            return jsonify({"ready": False, "timezone": timezone})
         return jsonify(
             {
                 "ready": True,
                 "updated_at": snapshot.updated_at,
                 "have_fresh_data": snapshot.have_fresh_data,
                 "settings_enabled": bool(settings_token),
+                "timezone": timezone,
                 "main_fuse": {
                     "l1": snapshot.main_fuse_l1_a,
                     "l2": snapshot.main_fuse_l2_a,
@@ -160,10 +162,11 @@ def start_in_background(
     station_manager: StationManager,
     history_recorder: Optional[HistoryRecorder],
     settings_token: str,
+    timezone: str,
     host: str,
     port: int,
 ) -> None:
-    app = create_app(state, station_manager, history_recorder, settings_token)
+    app = create_app(state, station_manager, history_recorder, settings_token, timezone)
 
     def _serve() -> None:
         app.run(host=host, port=port, threaded=True, use_reloader=False)
