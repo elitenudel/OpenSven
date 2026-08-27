@@ -55,27 +55,32 @@ class HistoryRecorder:
                 f.write(json.dumps(record) + "\n")
             self._enforce_limit()
 
-    def purge_charger(self, name: str) -> None:
+    def purge_charger(self, name: str) -> int:
         """Permanently deletes every recorded sample for `name` from every
         chunk file - called when a charger is *removed*, never when it's
         only edited (including a rename), since editing must never lose
         history. Rewrites each chunk in place (only the ones that actually
         mention `name`) rather than a full rebuild, since files can span
         many other chargers plus the main fuse reading, none of which this
-        should touch."""
+        should touch. Returns how many records actually mentioned `name` -
+        callers should treat 0 as a sign the name didn't match anything (a
+        typo, wrong case, or extra whitespace against how it's actually
+        stored), not as confirmation the purge did something."""
+        total = 0
         with self._lock:
             for path, _ in self._chunk_files():
-                self._purge_charger_from_file(path, name)
+                total += self._purge_charger_from_file(path, name)
+        return total
 
-    def _purge_charger_from_file(self, path: Path, name: str) -> None:
+    def _purge_charger_from_file(self, path: Path, name: str) -> int:
         try:
             with open(path) as f:
                 lines = f.readlines()
         except OSError as exc:
             logger.warning("Could not read history file %s while purging %s: %s", path, name, exc)
-            return
+            return 0
 
-        changed = False
+        removed_count = 0
         kept_lines = []
         for line in lines:
             stripped = line.strip()
@@ -90,11 +95,11 @@ class HistoryRecorder:
                 continue
             if name in rec.get("c", {}):
                 del rec["c"][name]
-                changed = True
+                removed_count += 1
             kept_lines.append(json.dumps(rec) + "\n")
 
-        if not changed:
-            return
+        if not removed_count:
+            return 0
 
         tmp_path = path.with_name(path.name + ".tmp")
         try:
@@ -103,6 +108,8 @@ class HistoryRecorder:
             os.replace(tmp_path, path)
         except OSError as exc:
             logger.warning("Could not rewrite history file %s while purging %s: %s", path, name, exc)
+            return 0
+        return removed_count
 
     def read_since(self, since_timestamp: float) -> list[dict]:
         since_chunk = int(since_timestamp // _CHUNK_SECONDS)

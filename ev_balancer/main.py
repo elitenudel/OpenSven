@@ -399,8 +399,17 @@ def main() -> None:
             directory=history_cfg.get("directory", "state/history"),
             max_size_bytes=int(history_cfg.get("max_size_mb", 1024) * 1024 * 1024),
         )
-        recorder.purge_charger(args.purge_charger_history)
-        print(f"Purged all recorded history for charger '{args.purge_charger_history}'.")
+        removed = recorder.purge_charger(args.purge_charger_history)
+        if removed:
+            print(f"Purged {removed} recorded sample(s) for charger '{args.purge_charger_history}'.")
+        else:
+            known_names = sorted({name for rec in recorder.read_since(0) for name in rec.get("c", {})})
+            print(f"No recorded samples mentioned '{args.purge_charger_history}' - nothing purged.")
+            print(
+                "Names actually found in history: "
+                + (", ".join(repr(n) for n in known_names) if known_names else "(none)")
+            )
+            print("Check for an exact match (spelling, capitalization, extra spaces).")
         return
 
     run(config, shelly_only=args.shelly_only)
