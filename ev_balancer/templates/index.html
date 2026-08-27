@@ -21,10 +21,18 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
     min-height: 100vh;
     text-align: center;
     padding: 2.5rem 1.5rem;
+  }
+
+  .page-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
   }
 
   h1 {
@@ -709,6 +717,7 @@
     </svg>
   </button>
 
+  <div class="page-content">
   <h1>EV Load Balancer</h1>
   <p class="subtitle" id="subtitle">Connecting&hellip;</p>
 
@@ -738,6 +747,7 @@
   <div class="section section-wide">
     <div class="section-label">Chargers</div>
     <div class="chargers" id="chargers"></div>
+  </div>
   </div>
 
   <footer class="footer">&copy; Emil Kjellner 2026</footer>
@@ -1688,7 +1698,13 @@
         });
         group.appendChild(guideLine);
         group.appendChild(dot);
-        hoverSeriesInfo.push({ name, baseColor: color, points, dot, guideLine });
+        // points (averaged) positions the dot/guide-line so they sit right
+        // on the drawn line; rawPoints (every real recorded sample, sorted)
+        // is what the tooltip actually reads its numbers from - the line
+        // itself stays smoothed/averaged, only the hovered value shouldn't
+        // be.
+        const sortedRawPoints = rawPoints.slice().sort((a, b) => a.t - b.t);
+        hoverSeriesInfo.push({ name, baseColor: color, points, rawPoints: sortedRawPoints, dot, guideLine });
       }
 
       if (!graphHiddenSeries.has("Main Fuse")) {
@@ -1837,6 +1853,10 @@
       const matchWindow = stepSeconds * 0.5 + 1;
       const rows = [];
       for (const s of seriesInfo) {
+        // The averaged point only decides where the dot/guide-line sit (so
+        // they land right on the drawn line); the actual reading shown to
+        // the user comes from the real sample nearest this instant, not the
+        // slot average it was blended into.
         let pt = null;
         let bestDist = Infinity;
         for (const p of s.points) {
@@ -1851,14 +1871,29 @@
           s.guideLine.setAttribute("opacity", "0");
           continue;
         }
-        if (pt.kind === "offline") {
+
+        let rawPt = null;
+        let bestRawDist = Infinity;
+        for (const p of s.rawPoints) {
+          const dist = Math.abs(p.t - nearestT);
+          if (dist < bestRawDist) {
+            bestRawDist = dist;
+            rawPt = p;
+          }
+        }
+        // Falls back to the averaged point if no raw sample landed
+        // anywhere near this slot - shouldn't normally happen since a slot
+        // only exists because at least one raw sample fell inside it.
+        const valuePt = rawPt && bestRawDist <= matchWindow ? rawPt : pt;
+
+        if (valuePt.kind === "offline") {
           s.dot.setAttribute("opacity", "0");
           s.guideLine.setAttribute("opacity", "0");
           rows.push({ color: GRAPH_OFFLINE_COLOR, name: s.name, text: "offline" });
           continue;
         }
         const stateColor =
-          pt.kind === "blocked" ? GRAPH_BLOCKED_COLOR : pt.kind === "limited" ? GRAPH_LIMITED_COLOR : s.baseColor;
+          valuePt.kind === "blocked" ? GRAPH_BLOCKED_COLOR : valuePt.kind === "limited" ? GRAPH_LIMITED_COLOR : s.baseColor;
         const dotX = xScaleData(pt.t);
         const dotY = yScale(pt.w);
         s.dot.setAttribute("cx", dotX.toFixed(1));
@@ -1870,9 +1905,9 @@
         s.guideLine.setAttribute("y2", dotY.toFixed(1));
         s.guideLine.setAttribute("stroke", stateColor);
         s.guideLine.setAttribute("opacity", "0.35");
-        let text = formatWatts(pt.w) + " · " + formatAmps(pt.w);
-        if (pt.kind === "blocked") text += " (blocked)";
-        else if (pt.kind === "limited") text += " (limited)";
+        let text = formatWatts(valuePt.w) + " · " + formatAmps(valuePt.w);
+        if (valuePt.kind === "blocked") text += " (blocked)";
+        else if (valuePt.kind === "limited") text += " (limited)";
         rows.push({ color: stateColor, name: s.name, text });
       }
 
