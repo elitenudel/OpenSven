@@ -978,6 +978,50 @@
       return id;
     }
 
+    // Horizontal gradient for a gridline's fill: transparent at the very
+    // ends, ramping up to peakOpacity by 5% in and staying there until 95%,
+    // then back down to transparent - objectBoundingBox (the default)
+    // scales this to whatever shape uses it, so 5%/95% line up with the
+    // gridline's own left/right ends regardless of chart width.
+    function ensureGridlineFadeGradient(color, peakOpacity) {
+      const id = "graph-hfade-" + color.replace("#", "") + "-" + Math.round(peakOpacity * 100);
+      if (!graphSvg.querySelector("#" + id)) {
+        let defs = graphSvg.querySelector("defs");
+        if (!defs) {
+          defs = svgEl("defs", {});
+          graphSvg.insertBefore(defs, graphSvg.firstChild);
+        }
+        const gradient = svgEl("linearGradient", { id, x1: "0%", y1: "0", x2: "100%", y2: "0" });
+        gradient.appendChild(svgEl("stop", { offset: "0%", "stop-color": color, "stop-opacity": 0 }));
+        gradient.appendChild(svgEl("stop", { offset: "5%", "stop-color": color, "stop-opacity": peakOpacity }));
+        gradient.appendChild(svgEl("stop", { offset: "95%", "stop-color": color, "stop-opacity": peakOpacity }));
+        gradient.appendChild(svgEl("stop", { offset: "100%", "stop-color": color, "stop-opacity": 0 }));
+        defs.appendChild(gradient);
+      }
+      return id;
+    }
+
+    // Draws one gridline as a filled, horizontally-tapered shape (pointed
+    // at both ends) instead of a plain <line> with a fixed stroke-width -
+    // an SVG stroke can't vary its own width along its length, so getting
+    // both the width *and* the opacity to fade together over the first/
+    // last 5% needs an actual shape whose height tapers to zero, filled
+    // with the gradient above.
+    function drawFadedGridline(x0, x1, y, color, peakOpacity, strokeWidth) {
+      const fade = (x1 - x0) * 0.05;
+      const half = strokeWidth / 2;
+      const d = [
+        `M${x0},${y}`,
+        `L${x0 + fade},${y - half}`,
+        `L${x1 - fade},${y - half}`,
+        `L${x1},${y}`,
+        `L${x1 - fade},${y + half}`,
+        `L${x0 + fade},${y + half}`,
+        "Z",
+      ].join(" ");
+      graphSvg.appendChild(svgEl("path", { d, fill: `url(#${ensureGridlineFadeGradient(color, peakOpacity)})` }));
+    }
+
     function graphNiceMax(value) {
       if (value <= 0) return 1000;
       const magnitude = Math.pow(10, Math.floor(Math.log10(value)));
@@ -1206,9 +1250,7 @@
       [0, 0.5, 1].forEach((frac) => {
         const w = yMax * frac;
         const yy = yScale(w);
-        graphSvg.appendChild(
-          svgEl("line", { x1: marginLeft, x2: width - marginRight, y1: yy, y2: yy, stroke: "#1f1f1f", "stroke-width": 1 })
-        );
+        drawFadedGridline(marginLeft, width - marginRight, yy, "#242424", 1, 1);
         const label = svgEl("text", {
           x: marginLeft - 8,
           y: yy + 4,
@@ -1241,17 +1283,7 @@
       // a subtle visual aid, not another set of numbers to read.
       [0.25, 0.75].forEach((frac) => {
         const yy = yScale(yMax * frac);
-        graphSvg.appendChild(
-          svgEl("line", {
-            x1: marginLeft,
-            x2: width - marginRight,
-            y1: yy,
-            y2: yy,
-            stroke: "#1f1f1f",
-            "stroke-width": 1,
-            opacity: 0.4,
-          })
-        );
+        drawFadedGridline(marginLeft, width - marginRight, yy, "#1f1f1f", 0.44, 1);
       });
 
       const tickCount = 5;
