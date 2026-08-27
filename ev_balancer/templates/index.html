@@ -1192,7 +1192,7 @@
     }
 
     function formatWatts(w) {
-      return w >= 1000 ? (w / 1000).toFixed(1) + "kW" : Math.round(w) + "W";
+      return w >= 1000 ? (w / 1000).toFixed(1) + " kW" : Math.round(w) + " W";
     }
 
     // Watts here are already the *combined* draw across all three phases
@@ -1204,7 +1204,7 @@
     }
 
     function formatAmps(w) {
-      return Math.round(wattsToAmpsPerPhase(w)) + "A";
+      return Math.round(wattsToAmpsPerPhase(w)) + " A";
     }
 
     // Renders a "20.0kW"/"29A"-style string as a <text> with the trailing
