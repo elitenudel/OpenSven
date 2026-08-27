@@ -376,31 +376,24 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
 
-  .graph-offline-dot {
+  .graph-state-swatch {
     display: inline-block;
-    width: 0.6rem;
-    height: 0.6rem;
-    border-radius: 999px;
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 2px;
+    vertical-align: middle;
+  }
+
+  .graph-state-swatch.offline {
     background: #e74c3c;
-    vertical-align: middle;
   }
 
-  .graph-blocked-dot {
-    display: inline-block;
-    width: 0.6rem;
-    height: 0.6rem;
-    border-radius: 999px;
+  .graph-state-swatch.blocked {
     background: #e67e22;
-    vertical-align: middle;
   }
 
-  .graph-limited-dot {
-    display: inline-block;
-    width: 0.6rem;
-    height: 0.6rem;
-    border-radius: 999px;
+  .graph-state-swatch.limited {
     background: #f1c40f;
-    vertical-align: middle;
   }
 
   .settings-field {
@@ -699,9 +692,9 @@
     </div>
 
     <p class="field-hint">
-      <span class="graph-blocked-dot"></span> orange = blocked by the balancer &middot;
-      <span class="graph-limited-dot"></span> yellow = limited by the balancer &middot;
-      <span class="graph-offline-dot"></span> red = offline/no data.
+      <span class="graph-state-swatch blocked"></span> blocked by the balancer &middot;
+      <span class="graph-state-swatch limited"></span> limited by the balancer &middot;
+      <span class="graph-state-swatch offline"></span> offline/no data.
     </p>
 
     <p class="settings-error" id="graph-error"></p>
