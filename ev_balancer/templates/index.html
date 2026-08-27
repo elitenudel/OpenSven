@@ -276,6 +276,11 @@
 
   dialog#graph-dialog {
     width: min(95vw, 60rem);
+    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.6), 0 0 50px rgba(46, 204, 113, 0.05);
+  }
+
+  dialog#graph-dialog::backdrop {
+    backdrop-filter: blur(3px);
   }
 
   .graph-header {
@@ -360,14 +365,67 @@
   }
 
   .graph-wrap {
+    position: relative;
     width: 100%;
     overflow-x: auto;
+    border-radius: 0.75rem;
+    border: 1px solid #1a1a1a;
+    background: radial-gradient(ellipse at top, rgba(255, 255, 255, 0.025), transparent 60%), #0a0a0a;
   }
 
   #graph-svg {
     width: 100%;
     height: 24rem;
     display: block;
+  }
+
+  .graph-tooltip {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 5;
+    pointer-events: none;
+    background: rgba(20, 20, 20, 0.95);
+    border: 1px solid #2a2a2a;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.65rem;
+    font-size: 0.72rem;
+    color: #ddd;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    white-space: nowrap;
+  }
+
+  .graph-tooltip-time {
+    color: #999;
+    font-size: 0.68rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .graph-tooltip-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .graph-tooltip-row + .graph-tooltip-row {
+    margin-top: 0.25rem;
+  }
+
+  .graph-tooltip-swatch {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .graph-tooltip-label {
+    flex: 1;
+  }
+
+  .graph-tooltip-value {
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    margin-left: 0.6rem;
   }
 
   #graph-svg text {
@@ -708,8 +766,9 @@
 
     <div class="graph-legend" id="graph-legend"></div>
 
-    <div class="graph-wrap">
+    <div class="graph-wrap" id="graph-wrap">
       <svg id="graph-svg" viewBox="0 0 800 420" preserveAspectRatio="none"></svg>
+      <div class="graph-tooltip" id="graph-tooltip" hidden></div>
     </div>
 
     <div class="graph-state-legend">
@@ -741,6 +800,8 @@
     const graphDialog = document.getElementById("graph-dialog");
     const graphClose = document.getElementById("graph-close");
     const graphSvg = document.getElementById("graph-svg");
+    const graphWrap = document.getElementById("graph-wrap");
+    const graphTooltip = document.getElementById("graph-tooltip");
     const graphLegend = document.getElementById("graph-legend");
     const graphError = document.getElementById("graph-error");
     const graphRangeToggle = document.getElementById("graph-range-toggle");
@@ -934,6 +995,11 @@
     let graphHours = 24;
     let lastGraphSamples = [];
     const graphHiddenSeries = new Set();
+    // Rebuilt on every renderGraph() call - holds everything the pointermove
+    // handler below needs to find the nearest point and update the
+    // crosshair/tooltip, since the SVG itself gets torn down and redrawn
+    // every 5s while the dialog is open and can't hold that state itself.
+    let graphHoverState = null;
     // Orange and yellow are reserved for the "blocked"/"limited" states
     // below, so they're left out of the per-charger rotation to avoid a
     // charger's own color looking identical to a state indicator.
@@ -1053,6 +1119,28 @@
         "Z",
       ].join(" ");
       graphSvg.appendChild(svgEl("path", { d, fill: `url(#${ensureGridlineFadeGradient(color, peakOpacity)})` }));
+    }
+
+    // Smooths a line by routing it through a quadratic curve to the midpoint
+    // between each pair of points, rather than straight segments - each
+    // curve still passes exactly through the real point at its start (only
+    // the midpoints, not the data points themselves, are approximated), so
+    // this can't overshoot into implausible values the way a full spline
+    // fit through every point could.
+    function graphSmoothPathD(points, xFn, yFn) {
+      if (points.length === 0) return "";
+      const xs = points.map(xFn);
+      const ys = points.map(yFn);
+      if (points.length === 1) return `M${xs[0].toFixed(1)},${ys[0].toFixed(1)}`;
+      let d = `M${xs[0].toFixed(1)},${ys[0].toFixed(1)}`;
+      for (let i = 1; i < points.length - 1; i++) {
+        const mx = (xs[i] + xs[i + 1]) / 2;
+        const my = (ys[i] + ys[i + 1]) / 2;
+        d += ` Q${xs[i].toFixed(1)},${ys[i].toFixed(1)} ${mx.toFixed(1)},${my.toFixed(1)}`;
+      }
+      const last = points.length - 1;
+      d += ` L${xs[last].toFixed(1)},${ys[last].toFixed(1)}`;
+      return d;
     }
 
     function graphNiceMax(value) {
@@ -1229,6 +1317,11 @@
 
       graphSvg.innerHTML = "";
       graphLegend.innerHTML = "";
+      // The tooltip/crosshair reference the specific DOM nodes just cleared
+      // above, so a stale hover state (and any tooltip left visible from
+      // before this refresh) can't be allowed to survive the redraw.
+      graphHoverState = null;
+      graphTooltip.hidden = true;
 
       const nowS = Date.now() / 1000;
       const tMin = nowS - graphHours * 3600;
@@ -1376,6 +1469,11 @@
       const seriesGroup = svgEl("g", { mask: `url(#${dataFadeMaskId})` });
       graphSvg.appendChild(seriesGroup);
 
+      // Filled in by drawSeries below (one entry per visible series) and
+      // handed to the pointermove handler via graphHoverState at the end of
+      // this function, so hovering can look up the nearest value per line.
+      const hoverSeriesInfo = [];
+
       // Marks the newest point of a series' line with a small sparkle: a
       // blurred glow copy behind a sharp copy on top, both pulsating
       // together between 50% and 90% opacity via a slow native SMIL
@@ -1453,7 +1551,7 @@
         seriesGroup.appendChild(breatheGroup);
       }
 
-      function drawSeries(rawPoints, color, seriesIndex) {
+      function drawSeries(rawPoints, color, seriesIndex, name) {
         const points = averageForRender(rawPoints, stepSeconds);
         const runs = buildGraphRuns(points);
         for (let i = 0; i < runs.length; i++) {
@@ -1488,9 +1586,7 @@
           const drawPoints = bridge ? [prev.points[prev.points.length - 1], ...run.points] : run.points;
 
           if (drawPoints.length < 2) continue;
-          const d = drawPoints
-            .map((p, idx) => (idx === 0 ? "M" : "L") + xScaleData(p.t).toFixed(1) + "," + yScale(p.w).toFixed(1))
-            .join(" ");
+          const d = graphSmoothPathD(drawPoints, (p) => xScaleData(p.t), (p) => yScale(p.w));
 
           // Area fill uses the series' own base color regardless of this
           // run's state color, so it reads as one calm backdrop per series
@@ -1526,13 +1622,22 @@
             lastRun.kind === "blocked" ? GRAPH_BLOCKED_COLOR : lastRun.kind === "limited" ? GRAPH_LIMITED_COLOR : color;
           drawLatestPointSparkle(xScaleData(lastPoint.t), yScale(lastPoint.w), lastColor, seriesIndex);
         }
+
+        // A single reusable marker dot for this series, moved into position
+        // and shown/hidden by the pointermove handler rather than redrawn -
+        // hover happens far more often than a full render, so it gets its
+        // own cheap update path instead of going through renderGraph again.
+        const dot = svgEl("circle", { r: 3.5, fill: color, stroke: "#0d0d0d", "stroke-width": 1.5, opacity: 0 });
+        seriesGroup.appendChild(dot);
+        hoverSeriesInfo.push({ name, baseColor: color, points, dot });
       }
 
       if (!graphHiddenSeries.has("Main Fuse")) {
         drawSeries(
           samples.map((s) => ({ t: s.t, w: s.fuse_w || 0, kind: "on" })),
           GRAPH_FUSE_COLOR,
-          0
+          0,
+          "Main Fuse"
         );
       }
       addLegendEntry("Main Fuse", GRAPH_FUSE_COLOR);
@@ -1548,10 +1653,35 @@
             const kind = !online ? "offline" : !enabled ? "blocked" : limited ? "limited" : "on";
             points.push({ t: s.t, w, kind });
           }
-          drawSeries(points, color, i + 1);
+          drawSeries(points, color, i + 1, name);
         }
         addLegendEntry(name, color);
       });
+
+      const hoverLine = svgEl("line", {
+        x1: 0,
+        y1: marginTop,
+        x2: 0,
+        y2: height - marginBottom,
+        stroke: "#666",
+        "stroke-width": 1,
+        "stroke-dasharray": "3,3",
+        opacity: 0,
+      });
+      graphSvg.appendChild(hoverLine);
+
+      graphHoverState = {
+        seriesInfo: hoverSeriesInfo,
+        xScaleData,
+        yScale,
+        marginLeft,
+        plotW,
+        tMin,
+        tMax,
+        stepSeconds,
+        hoverLine,
+        width,
+      };
     }
 
     async function loadGraph() {
@@ -1578,6 +1708,145 @@
         graphError.textContent = "Could not load charging history.";
       }
     }
+
+    function hideGraphHover() {
+      if (graphHoverState) {
+        graphHoverState.hoverLine.setAttribute("opacity", "0");
+        for (const s of graphHoverState.seriesInfo) s.dot.setAttribute("opacity", "0");
+      }
+      graphTooltip.hidden = true;
+    }
+
+    function updateGraphHover(evt) {
+      if (!graphHoverState) return;
+      const { seriesInfo, xScaleData, yScale, marginLeft, plotW, tMin, tMax, stepSeconds, hoverLine } = graphHoverState;
+      if (seriesInfo.length === 0 || tMax === tMin) {
+        hideGraphHover();
+        return;
+      }
+
+      // The SVG's viewBox is set to its own clientWidth/clientHeight on
+      // every render (see renderGraph), so 1 viewBox unit is 1 CSS pixel -
+      // this scale factor only matters if the browser is ever zoomed enough
+      // to make getBoundingClientRect disagree with that.
+      const svgRect = graphSvg.getBoundingClientRect();
+      const scaleX = graphHoverState.width ? graphHoverState.width / svgRect.width : 1;
+      const svgX = (evt.clientX - svgRect.left) * scaleX;
+      const dataRight = marginLeft + plotW * 0.95;
+      if (svgX < marginLeft || svgX > dataRight) {
+        hideGraphHover();
+        return;
+      }
+
+      const t = tMin + ((svgX - marginLeft) / (plotW * 0.95)) * (tMax - tMin);
+
+      let refPoints = null;
+      for (const s of seriesInfo) {
+        if (s.points.length) {
+          refPoints = s.points;
+          break;
+        }
+      }
+      if (!refPoints) {
+        hideGraphHover();
+        return;
+      }
+      let nearest = refPoints[0];
+      let nearestDist = Math.abs(nearest.t - t);
+      for (const p of refPoints) {
+        const dist = Math.abs(p.t - t);
+        if (dist < nearestDist) {
+          nearest = p;
+          nearestDist = dist;
+        }
+      }
+      const nearestT = nearest.t;
+
+      hoverLine.setAttribute("x1", xScaleData(nearestT).toFixed(1));
+      hoverLine.setAttribute("x2", xScaleData(nearestT).toFixed(1));
+      hoverLine.setAttribute("opacity", "0.5");
+
+      // Every series was averaged into slots of the same epoch-anchored
+      // width (see averageForRender), so a slot at a given real time lands
+      // at the same t in every series - matching by nearest-within-half-a-
+      // slot rather than by array index is what lets a series with a gap
+      // (offline, or just not present yet) be skipped without throwing off
+      // the others.
+      const matchWindow = stepSeconds * 0.5 + 1;
+      const rows = [];
+      for (const s of seriesInfo) {
+        let pt = null;
+        let bestDist = Infinity;
+        for (const p of s.points) {
+          const dist = Math.abs(p.t - nearestT);
+          if (dist < bestDist) {
+            bestDist = dist;
+            pt = p;
+          }
+        }
+        if (!pt || bestDist > matchWindow) {
+          s.dot.setAttribute("opacity", "0");
+          continue;
+        }
+        if (pt.kind === "offline") {
+          s.dot.setAttribute("opacity", "0");
+          rows.push({ color: GRAPH_OFFLINE_COLOR, name: s.name, text: "offline" });
+          continue;
+        }
+        const stateColor =
+          pt.kind === "blocked" ? GRAPH_BLOCKED_COLOR : pt.kind === "limited" ? GRAPH_LIMITED_COLOR : s.baseColor;
+        s.dot.setAttribute("cx", xScaleData(pt.t).toFixed(1));
+        s.dot.setAttribute("cy", yScale(pt.w).toFixed(1));
+        s.dot.setAttribute("fill", stateColor);
+        s.dot.setAttribute("opacity", "1");
+        let text = formatWatts(pt.w) + " · " + formatAmps(pt.w);
+        if (pt.kind === "blocked") text += " (blocked)";
+        else if (pt.kind === "limited") text += " (limited)";
+        rows.push({ color: stateColor, name: s.name, text });
+      }
+
+      if (rows.length === 0) {
+        hideGraphHover();
+        return;
+      }
+
+      graphTooltip.innerHTML = "";
+      const timeEl = document.createElement("div");
+      timeEl.className = "graph-tooltip-time";
+      timeEl.textContent = formatClock(nearestT);
+      graphTooltip.appendChild(timeEl);
+      for (const row of rows) {
+        const rowEl = document.createElement("div");
+        rowEl.className = "graph-tooltip-row";
+        const swatch = document.createElement("span");
+        swatch.className = "graph-tooltip-swatch";
+        swatch.style.background = row.color;
+        const label = document.createElement("span");
+        label.className = "graph-tooltip-label";
+        label.textContent = row.name;
+        const value = document.createElement("span");
+        value.className = "graph-tooltip-value";
+        value.textContent = row.text;
+        rowEl.appendChild(swatch);
+        rowEl.appendChild(label);
+        rowEl.appendChild(value);
+        graphTooltip.appendChild(rowEl);
+      }
+      graphTooltip.hidden = false;
+
+      const wrapRect = graphWrap.getBoundingClientRect();
+      let left = evt.clientX - wrapRect.left + 14;
+      let top = evt.clientY - wrapRect.top + 14;
+      const tw = graphTooltip.offsetWidth;
+      const th = graphTooltip.offsetHeight;
+      if (left + tw > wrapRect.width) left = evt.clientX - wrapRect.left - tw - 14;
+      if (top + th > wrapRect.height) top = evt.clientY - wrapRect.top - th - 14;
+      graphTooltip.style.left = Math.max(0, left) + "px";
+      graphTooltip.style.top = Math.max(0, top) + "px";
+    }
+
+    graphWrap.addEventListener("pointermove", updateGraphHover);
+    graphWrap.addEventListener("pointerleave", hideGraphHover);
 
     let graphRefreshTimer = null;
 
