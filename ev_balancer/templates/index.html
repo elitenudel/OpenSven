@@ -1219,6 +1219,21 @@
       });
     }
 
+    // Ticks land on clean clock boundaries for each range rather than N
+    // evenly-spaced fractions of tMin..tMax, so the axis reads "14:00,
+    // 16:00, 18:00" instead of arbitrary times like "14:07". Computed from
+    // the raw epoch rather than a Date's local getHours()/getMinutes() -
+    // that's only exact for whole-hour-offset zones (true for
+    // Europe/Stockholm and the vast majority of zones, not the ~30/45min-
+    // offset handful like India or Nepal), but matches how every other
+    // epoch-anchored thing in this graph (averageForRender's slots) is
+    // already done.
+    function graphTickIntervalSeconds(hours) {
+      if (hours <= 0.25) return 60; // 15m view -> every minute
+      if (hours <= 1) return 600; // 1h view -> every 10 minutes
+      return 7200; // 24h view -> every other whole hour
+    }
+
     function addLegendEntry(name, color) {
       const item = document.createElement("button");
       item.type = "button";
@@ -1465,11 +1480,20 @@
         drawFadedGridline(marginLeft, width - marginRight, yy, "#1f1f1f", 0.44, 1);
       });
 
-      const tickCount = 5;
-      for (let i = 0; i < tickCount; i++) {
-        const t = tMin + (i / (tickCount - 1)) * (tMax - tMin);
+      // Same first/last-5%-of-width fade zone the gridlines above use, so
+      // a tick that happens to land right at the edge (common now that
+      // ticks sit on clock boundaries instead of always including tMin/
+      // tMax exactly) fades out instead of crowding or clipping against
+      // the plot edge.
+      const tickIntervalSeconds = graphTickIntervalSeconds(graphHours);
+      const tickEdgeFade = 0.05;
+      const firstTickT = Math.ceil(tMin / tickIntervalSeconds) * tickIntervalSeconds;
+      for (let t = firstTickT; t <= tMax; t += tickIntervalSeconds) {
         const xx = xScale(t);
-        const anchor = i === 0 ? "start" : i === tickCount - 1 ? "end" : "middle";
+        const frac = (xx - marginLeft) / plotW;
+        const opacity = Math.max(0, Math.min(frac / tickEdgeFade, (1 - frac) / tickEdgeFade, 1));
+        if (opacity <= 0.02) continue;
+        const anchor = frac < tickEdgeFade ? "start" : frac > 1 - tickEdgeFade ? "end" : "middle";
         const label = svgEl("text", {
           x: xx,
           y: height - marginBottom + 16,
@@ -1477,6 +1501,7 @@
           "font-size": 10,
           "font-family": GRAPH_FONT_FAMILY,
           "text-anchor": anchor,
+          opacity: opacity.toFixed(2),
         });
         label.textContent = formatClock(t);
         graphSvg.appendChild(label);
