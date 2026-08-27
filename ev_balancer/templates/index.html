@@ -1533,7 +1533,11 @@
       const firstTickT =
         Math.ceil((tMin + tickTzOffset) / tickIntervalSeconds) * tickIntervalSeconds - tickTzOffset;
       for (let t = firstTickT; t <= tMax; t += tickIntervalSeconds) {
-        const xx = xScale(t);
+        // xScaleData, not xScale - this has to land exactly where the
+        // line/hover dot for that instant actually renders, and both of
+        // those are positioned via xScaleData's compressed-to-95% mapping,
+        // not the gridlines' full-width one.
+        const xx = xScaleData(t);
         const frac = (xx - marginLeft) / plotW;
         const opacity = Math.max(0, Math.min(frac / tickEdgeFade, (1 - frac) / tickEdgeFade, 1));
         if (opacity <= 0.02) continue;
