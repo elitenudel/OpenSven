@@ -955,8 +955,13 @@
     // fully transparent at 0W. objectBoundingBox (the default) scales the
     // gradient to each filled shape's own box, so this needs no per-shape
     // coordinates - it just fades top-to-bottom of whatever uses it.
-    function ensureGraphGradient(color) {
-      const id = "graph-grad-" + color.replace("#", "");
+    const GRAPH_FILL_OPACITY = 0.14;
+
+    // reversed=true builds a gradient that's opaque at the *bottom* instead
+    // of the top - used for the offline glow, which has no line to hang
+    // off of and instead anchors to the baseline.
+    function ensureGraphGradient(color, reversed) {
+      const id = "graph-grad-" + color.replace("#", "") + (reversed ? "-rev" : "");
       if (!graphSvg.querySelector("#" + id)) {
         let defs = graphSvg.querySelector("defs");
         if (!defs) {
@@ -964,8 +969,10 @@
           graphSvg.insertBefore(defs, graphSvg.firstChild);
         }
         const gradient = svgEl("linearGradient", { id, x1: "0", y1: "0", x2: "0", y2: "1" });
-        gradient.appendChild(svgEl("stop", { offset: "0%", "stop-color": color, "stop-opacity": 0.22 }));
-        gradient.appendChild(svgEl("stop", { offset: "100%", "stop-color": color, "stop-opacity": 0 }));
+        const nearOffset = reversed ? "100%" : "0%";
+        const farOffset = reversed ? "0%" : "100%";
+        gradient.appendChild(svgEl("stop", { offset: nearOffset, "stop-color": color, "stop-opacity": GRAPH_FILL_OPACITY }));
+        gradient.appendChild(svgEl("stop", { offset: farOffset, "stop-color": color, "stop-opacity": 0 }));
         defs.appendChild(gradient);
       }
       return id;
@@ -1254,11 +1261,28 @@
           if (run.kind === "offline") {
             const t0 = run.points[0].t;
             const t1 = run.points[run.points.length - 1].t;
+            const x0 = xScale(t0);
+            const x1 = xScale(t1);
+            const baselineY = height - marginBottom;
+            const glowHeight = Math.min(plotH * 0.25, 60);
+            // Soft glow anchored to the baseline (there's no line height to
+            // hang a normal top-down fade off of here, since offline has no
+            // trustworthy value to plot), plus the small solid marker on
+            // top for a precise "this happened here" indicator.
             graphSvg.appendChild(
               svgEl("rect", {
-                x: xScale(t0),
-                y: height - marginBottom - 4,
-                width: Math.max(xScale(t1) - xScale(t0), 2),
+                x: x0,
+                y: baselineY - glowHeight,
+                width: Math.max(x1 - x0, 2),
+                height: glowHeight,
+                fill: `url(#${ensureGraphGradient(GRAPH_OFFLINE_COLOR, true)})`,
+              })
+            );
+            graphSvg.appendChild(
+              svgEl("rect", {
+                x: x0,
+                y: baselineY - 4,
+                width: Math.max(x1 - x0, 2),
                 height: 3,
                 rx: 1.5,
                 fill: GRAPH_OFFLINE_COLOR,
@@ -1285,15 +1309,18 @@
             .map((p, idx) => (idx === 0 ? "M" : "L") + xScale(p.t).toFixed(1) + "," + yScale(p.w).toFixed(1))
             .join(" ");
 
-          // Area fill uses the series' own base color regardless of this
-          // run's state color, so it reads as one calm backdrop per series
-          // instead of flickering between blocked/limited/normal tints.
+          // Blocked segments fill with the same orange as their line;
+          // everything else (on/limited) keeps the series' own base color
+          // rather than flickering between every state's tint.
+          const areaColor = run.kind === "blocked" ? GRAPH_BLOCKED_COLOR : color;
           const baselineY = height - marginBottom;
           const areaD =
             d +
             ` L${xScale(drawPoints[drawPoints.length - 1].t).toFixed(1)},${baselineY}` +
             ` L${xScale(drawPoints[0].t).toFixed(1)},${baselineY} Z`;
-          graphSvg.appendChild(svgEl("path", { d: areaD, fill: `url(#${ensureGraphGradient(color)})`, stroke: "none" }));
+          graphSvg.appendChild(
+            svgEl("path", { d: areaD, fill: `url(#${ensureGraphGradient(areaColor)})`, stroke: "none" })
+          );
 
           graphSvg.appendChild(
             svgEl("path", {
