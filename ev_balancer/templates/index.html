@@ -279,20 +279,16 @@
   }
 
   .graph-header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 0.5rem 1rem;
     margin-bottom: 1.25rem;
   }
 
   .graph-header h2 {
-    margin: 0;
+    margin: 0 0 0.9rem;
   }
 
   .graph-range-toggle {
     display: flex;
+    justify-content: center;
     gap: 0.4rem;
   }
 
@@ -325,6 +321,7 @@
   .graph-legend {
     display: flex;
     flex-wrap: wrap;
+    justify-content: center;
     gap: 0.5rem 1.1rem;
     margin-bottom: 1rem;
     font-size: 0.75rem;
@@ -376,12 +373,28 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
 
+  .graph-state-legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.4rem 1rem;
+    font-size: 0.75rem;
+    color: #999;
+    margin: 0.75rem 0 0;
+  }
+
+  .graph-state-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
   .graph-state-swatch {
     display: inline-block;
     width: 0.7rem;
     height: 0.7rem;
     border-radius: 2px;
-    vertical-align: middle;
+    flex-shrink: 0;
   }
 
   .graph-state-swatch.offline {
@@ -691,11 +704,11 @@
       <svg id="graph-svg" viewBox="0 0 800 420" preserveAspectRatio="none"></svg>
     </div>
 
-    <p class="field-hint">
-      <span class="graph-state-swatch blocked"></span> blocked by the balancer &middot;
-      <span class="graph-state-swatch limited"></span> limited by the balancer &middot;
-      <span class="graph-state-swatch offline"></span> offline/no data.
-    </p>
+    <div class="graph-state-legend">
+      <span class="graph-state-legend-item"><span class="graph-state-swatch blocked"></span>blocked by the balancer</span>
+      <span class="graph-state-legend-item"><span class="graph-state-swatch limited"></span>limited by the balancer</span>
+      <span class="graph-state-legend-item"><span class="graph-state-swatch offline"></span>offline/no data</span>
+    </div>
 
     <p class="settings-error" id="graph-error"></p>
 
