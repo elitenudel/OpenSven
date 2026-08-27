@@ -368,9 +368,6 @@
     position: relative;
     width: 100%;
     overflow-x: auto;
-    border-radius: 0.75rem;
-    border: 1px solid #1a1a1a;
-    background: radial-gradient(ellipse at top, rgba(255, 255, 255, 0.025), transparent 60%), #0a0a0a;
   }
 
   #graph-svg {
@@ -430,6 +427,10 @@
 
   #graph-svg text {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  #graph-svg g[data-series] {
+    transition: opacity 0.15s ease;
   }
 
   .graph-state-legend {
@@ -1203,7 +1204,19 @@
         }
         renderGraph(lastGraphSamples);
       });
+      item.addEventListener("mouseenter", () => setGraphHighlight(name));
+      item.addEventListener("mouseleave", () => setGraphHighlight(null));
       graphLegend.appendChild(item);
+    }
+
+    // Dims every series but `name` to make it pop out - looks up the
+    // per-series <g data-series="..."> groups drawSeries built rather than
+    // tracking references itself, so it always reflects whatever's actually
+    // in the SVG right now even after a redraw has replaced every group.
+    function setGraphHighlight(name) {
+      for (const g of graphSvg.querySelectorAll("[data-series]")) {
+        g.style.opacity = !name || g.dataset.series === name ? "1" : "0.2";
+      }
     }
 
     // Picks the median gap between consecutive (sorted, deduplicated)
@@ -1479,7 +1492,7 @@
       // together between 50% and 90% opacity via a slow native SMIL
       // animation (simplest way to get a real pulse without a JS timer
       // fighting the periodic full-graph redraw).
-      function drawLatestPointSparkle(px, py, color, seriesIndex) {
+      function drawLatestPointSparkle(px, py, color, seriesIndex, group) {
         // Each series starts its cycle at a different offset so several
         // sparkles pulsing at once don't all beat in lockstep - a small
         // amount of staggering is what reads as "alive" rather than
@@ -1514,7 +1527,7 @@
             repeatCount: "indefinite",
           })
         );
-        seriesGroup.appendChild(ring);
+        group.appendChild(ring);
 
         // Sparkle itself: a breathing scale (in a transform-only inner
         // group, so the scale animation has no existing transform of its
@@ -1548,10 +1561,19 @@
         core.appendChild(pulse());
         breatheGroup.appendChild(core);
 
-        seriesGroup.appendChild(breatheGroup);
+        group.appendChild(breatheGroup);
       }
 
       function drawSeries(rawPoints, color, seriesIndex, name) {
+        // Everything this series draws lives in one <g>, tagged with its
+        // name - setGraphHighlight (legend hover) looks these groups up by
+        // that tag to dim every series but the hovered one, which only
+        // works cleanly if a series' line, fill, sparkle and dot are one
+        // unit rather than loose siblings mixed in with every other
+        // series' elements.
+        const group = svgEl("g", { "data-series": name });
+        seriesGroup.appendChild(group);
+
         const points = averageForRender(rawPoints, stepSeconds);
         const runs = buildGraphRuns(points);
         for (let i = 0; i < runs.length; i++) {
@@ -1559,7 +1581,7 @@
           if (run.kind === "offline") {
             const t0 = run.points[0].t;
             const t1 = run.points[run.points.length - 1].t;
-            seriesGroup.appendChild(
+            group.appendChild(
               svgEl("rect", {
                 x: xScaleData(t0),
                 y: height - marginBottom - 4,
@@ -1596,9 +1618,9 @@
             d +
             ` L${xScaleData(drawPoints[drawPoints.length - 1].t).toFixed(1)},${baselineY}` +
             ` L${xScaleData(drawPoints[0].t).toFixed(1)},${baselineY} Z`;
-          seriesGroup.appendChild(svgEl("path", { d: areaD, fill: `url(#${ensureGraphGradient(color)})`, stroke: "none" }));
+          group.appendChild(svgEl("path", { d: areaD, fill: `url(#${ensureGraphGradient(color)})`, stroke: "none" }));
 
-          seriesGroup.appendChild(
+          group.appendChild(
             svgEl("path", {
               d,
               fill: "none",
@@ -1620,16 +1642,28 @@
           const lastPoint = lastRun.points[lastRun.points.length - 1];
           const lastColor =
             lastRun.kind === "blocked" ? GRAPH_BLOCKED_COLOR : lastRun.kind === "limited" ? GRAPH_LIMITED_COLOR : color;
-          drawLatestPointSparkle(xScaleData(lastPoint.t), yScale(lastPoint.w), lastColor, seriesIndex);
+          drawLatestPointSparkle(xScaleData(lastPoint.t), yScale(lastPoint.w), lastColor, seriesIndex, group);
         }
 
-        // A single reusable marker dot for this series, moved into position
-        // and shown/hidden by the pointermove handler rather than redrawn -
-        // hover happens far more often than a full render, so it gets its
-        // own cheap update path instead of going through renderGraph again.
+        // A reusable marker dot plus a horizontal guide line out to the left
+        // axis, both moved into position and shown/hidden by the pointermove
+        // handler rather than redrawn - hover happens far more often than a
+        // full render, so it gets its own cheap update path instead of going
+        // through renderGraph again.
         const dot = svgEl("circle", { r: 3.5, fill: color, stroke: "#0d0d0d", "stroke-width": 1.5, opacity: 0 });
-        seriesGroup.appendChild(dot);
-        hoverSeriesInfo.push({ name, baseColor: color, points, dot });
+        const guideLine = svgEl("line", {
+          x1: marginLeft,
+          y1: 0,
+          x2: marginLeft,
+          y2: 0,
+          stroke: color,
+          "stroke-width": 1,
+          "stroke-dasharray": "2,3",
+          opacity: 0,
+        });
+        group.appendChild(guideLine);
+        group.appendChild(dot);
+        hoverSeriesInfo.push({ name, baseColor: color, points, dot, guideLine });
       }
 
       if (!graphHiddenSeries.has("Main Fuse")) {
@@ -1712,7 +1746,10 @@
     function hideGraphHover() {
       if (graphHoverState) {
         graphHoverState.hoverLine.setAttribute("opacity", "0");
-        for (const s of graphHoverState.seriesInfo) s.dot.setAttribute("opacity", "0");
+        for (const s of graphHoverState.seriesInfo) {
+          s.dot.setAttribute("opacity", "0");
+          s.guideLine.setAttribute("opacity", "0");
+        }
       }
       graphTooltip.hidden = true;
     }
@@ -1786,19 +1823,28 @@
         }
         if (!pt || bestDist > matchWindow) {
           s.dot.setAttribute("opacity", "0");
+          s.guideLine.setAttribute("opacity", "0");
           continue;
         }
         if (pt.kind === "offline") {
           s.dot.setAttribute("opacity", "0");
+          s.guideLine.setAttribute("opacity", "0");
           rows.push({ color: GRAPH_OFFLINE_COLOR, name: s.name, text: "offline" });
           continue;
         }
         const stateColor =
           pt.kind === "blocked" ? GRAPH_BLOCKED_COLOR : pt.kind === "limited" ? GRAPH_LIMITED_COLOR : s.baseColor;
-        s.dot.setAttribute("cx", xScaleData(pt.t).toFixed(1));
-        s.dot.setAttribute("cy", yScale(pt.w).toFixed(1));
+        const dotX = xScaleData(pt.t);
+        const dotY = yScale(pt.w);
+        s.dot.setAttribute("cx", dotX.toFixed(1));
+        s.dot.setAttribute("cy", dotY.toFixed(1));
         s.dot.setAttribute("fill", stateColor);
         s.dot.setAttribute("opacity", "1");
+        s.guideLine.setAttribute("x2", dotX.toFixed(1));
+        s.guideLine.setAttribute("y1", dotY.toFixed(1));
+        s.guideLine.setAttribute("y2", dotY.toFixed(1));
+        s.guideLine.setAttribute("stroke", stateColor);
+        s.guideLine.setAttribute("opacity", "0.35");
         let text = formatWatts(pt.w) + " · " + formatAmps(pt.w);
         if (pt.kind === "blocked") text += " (blocked)";
         else if (pt.kind === "limited") text += " (limited)";
