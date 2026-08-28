@@ -57,8 +57,6 @@
   }
 
   .hero .value {
-    position: relative;
-    display: inline-block;
     font-size: clamp(3.5rem, 14vw, 8rem);
     font-weight: 800;
     font-variant-numeric: tabular-nums;
@@ -68,19 +66,24 @@
   }
 
   .hero .unit {
-    /* Absolutely positioned (not just inline after the number) so it
-       sticks out to the right without being part of what .value's own
-       width - and so what centers it via the page's text-align: center -
-       is based on. Otherwise every centered instance of this reads as the
-       *whole* "10 A" string centered, leaving the number itself sitting
-       left of true center by half the unit's width. */
-    position: absolute;
-    left: 100%;
-    bottom: 0;
-    white-space: nowrap;
     font-size: 0.4em;
     color: #6ba97e;
     margin-left: 0.15em;
+  }
+
+  .hero .unit-ghost {
+    /* An invisible mirror of the real unit, placed before the number
+       instead of after it. Both stay in normal inline flow (so the real
+       unit keeps the browser's own correct baseline alignment next to the
+       number, unlike position:absolute, which had no baseline to align
+       to and needed the exact font-metric offset guessed by eye), and
+       having equal-width spacers on both sides is what makes text-align:
+       center on the page center the *number* - without the ghost, that
+       centers the whole "10 A" string instead, leaving the number itself
+       sitting left of true center by half the real unit's width. */
+    visibility: hidden;
+    margin-left: 0;
+    margin-right: 0.15em;
   }
 
   .hero .label {
@@ -187,6 +190,11 @@
 
   .charger-current-label {
     color: #5c5c5c;
+  }
+
+  .charger-current-unit {
+    color: #5c5c5c;
+    font-size: 0.8em;
   }
 
   .pill {
@@ -738,7 +746,7 @@
   <p class="subtitle" id="subtitle">Connecting&hellip;</p>
 
   <div class="hero">
-    <div class="value"><span id="allocated">&mdash;</span><span class="unit">A</span></div>
+    <div class="value"><span class="unit unit-ghost" aria-hidden="true">A</span><span id="allocated">&mdash;</span><span class="unit">A</span></div>
     <div class="label">Allocated Charging Power</div>
   </div>
 
@@ -917,7 +925,7 @@
           currentEl.appendChild(labelEl);
           currentEl.appendChild(document.createTextNode(fmt(value)));
           const unitEl = document.createElement("span");
-          unitEl.className = "charger-current-label";
+          unitEl.className = "charger-current-unit";
           unitEl.textContent = "A";
           currentEl.appendChild(unitEl);
         });
