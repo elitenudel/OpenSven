@@ -168,7 +168,13 @@
     align-items: center;
     gap: 1rem;
     background: #0d0d0d;
-    padding: 0.9rem 1.25rem;
+    /* Asymmetric top/bottom (not the plain 0.9rem both sides this reduces
+       to) - align-items: center here centers each cell's *line box*, but
+       this font's ascent (space reserved above the baseline) is
+       noticeably taller than its descent, so box-centered text always
+       reads as sitting above true center. Shifting the padding balance
+       down compensates without touching the row's total height. */
+    padding: 0.75rem 1.25rem 1.05rem;
     text-align: left;
   }
 
