@@ -71,21 +71,6 @@
     margin-left: 0.15em;
   }
 
-  .hero .unit-ghost {
-    /* An invisible mirror of the real unit, placed before the number
-       instead of after it. Both stay in normal inline flow (so the real
-       unit keeps the browser's own correct baseline alignment next to the
-       number, unlike position:absolute, which had no baseline to align
-       to and needed the exact font-metric offset guessed by eye), and
-       having equal-width spacers on both sides is what makes text-align:
-       center on the page center the *number* - without the ghost, that
-       centers the whole "10 A" string instead, leaving the number itself
-       sitting left of true center by half the real unit's width. */
-    visibility: hidden;
-    margin-left: 0;
-    margin-right: 0.15em;
-  }
-
   .hero .label {
     margin-top: 0.5rem;
     font-size: clamp(0.75rem, 1.6vw, 1.1rem);
@@ -168,14 +153,20 @@
     align-items: center;
     gap: 1rem;
     background: #0d0d0d;
-    /* Asymmetric top/bottom (not the plain 0.9rem both sides this reduces
-       to) - align-items: center here centers each cell's *line box*, but
-       this font's ascent (space reserved above the baseline) is
-       noticeably taller than its descent, so box-centered text always
-       reads as sitting above true center. Shifting the padding balance
-       down compensates without touching the row's total height. */
-    padding: 0.75rem 1.25rem 1.05rem;
+    padding: 0.9rem 1.25rem;
     text-align: left;
+  }
+
+  /* align-items: center above centers each cell's line box, but this
+     font's ascent (space reserved above the baseline) is taller than its
+     descent, so box-centered text reads as sitting above true center.
+     Nudging just the text down (rather than the row's own padding, which
+     looked unbalanced against the row's background/border) corrects that
+     without touching the row's own visual symmetry. */
+  .charger-name,
+  .charger-current,
+  .charger-status {
+    transform: translateY(3px);
   }
 
   .charger:not(:last-child) {
@@ -754,7 +745,7 @@
   <p class="subtitle" id="subtitle">Connecting&hellip;</p>
 
   <div class="hero">
-    <div class="value"><span class="unit unit-ghost" aria-hidden="true">A</span><span id="allocated">&mdash;</span><span class="unit">A</span></div>
+    <div class="value"><span id="allocated">&mdash;</span><span class="unit">A</span></div>
     <div class="label">Allocated Charging Power</div>
   </div>
 
