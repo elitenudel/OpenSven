@@ -163,7 +163,8 @@
 
   .charger {
     display: grid;
-    grid-template-columns: 13rem 12rem 1fr auto;
+    grid-template-columns: 13rem 1fr 12rem auto;
+    grid-template-areas: "name status current pill";
     align-items: center;
     gap: 1rem;
     background: #0d0d0d;
@@ -176,12 +177,14 @@
   }
 
   .charger-name {
+    grid-area: name;
     font-weight: 400;
     color: #999;
     overflow-wrap: break-word;
   }
 
   .charger-current {
+    grid-area: current;
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" 1;
     color: #999;
@@ -198,6 +201,7 @@
   }
 
   .pill {
+    grid-area: pill;
     font-size: 0.7rem;
     font-weight: 700;
     text-transform: uppercase;
@@ -218,6 +222,7 @@
   }
 
   .charger-status {
+    grid-area: status;
     display: flex;
     align-items: center;
     gap: 0.4rem;
@@ -248,15 +253,12 @@
       grid-template-columns: 1fr auto;
       grid-template-areas:
         "name pill"
-        "current current"
-        "status status";
+        "status status"
+        "current current";
       row-gap: 0.4rem;
     }
 
-    .charger-name { grid-area: name; }
-    .charger-current { grid-area: current; }
-    .charger-status { grid-area: status; }
-    .pill { grid-area: pill; justify-self: end; }
+    .pill { justify-self: end; }
   }
 
   .settings-btn {
