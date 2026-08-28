@@ -57,6 +57,8 @@
   }
 
   .hero .value {
+    position: relative;
+    display: inline-block;
     font-size: clamp(3.5rem, 14vw, 8rem);
     font-weight: 800;
     font-variant-numeric: tabular-nums;
@@ -66,6 +68,16 @@
   }
 
   .hero .unit {
+    /* Absolutely positioned (not just inline after the number) so it
+       sticks out to the right without being part of what .value's own
+       width - and so what centers it via the page's text-align: center -
+       is based on. Otherwise every centered instance of this reads as the
+       *whole* "10 A" string centered, leaving the number itself sitting
+       left of true center by half the unit's width. */
+    position: absolute;
+    left: 100%;
+    bottom: 0;
+    white-space: nowrap;
     font-size: 0.4em;
     color: #6ba97e;
     margin-left: 0.15em;
@@ -171,6 +183,10 @@
     font-feature-settings: "tnum" 1;
     color: #999;
     font-size: 0.85rem;
+  }
+
+  .charger-current-label {
+    color: #5c5c5c;
   }
 
   .pill {
@@ -882,14 +898,47 @@
       for (const c of chargers) {
         const row = document.createElement("div");
         row.className = "charger";
-        const statusText = c.online ? "Online" : "Offline &middot; last seen " + formatLastSeen(c.last_seen);
-        row.innerHTML =
-          '<span class="charger-name">' + c.name + "</span>" +
-          '<span class="charger-current">L1 ' + fmt(c.actual.l1) + "A &nbsp; L2 " + fmt(c.actual.l2) +
-          "A &nbsp; L3 " + fmt(c.actual.l3) + "A</span>" +
-          '<span class="charger-status"><span class="status-dot ' + (c.online ? "online" : "offline") +
-          '"></span>' + statusText + "</span>" +
-          '<span class="pill ' + (c.enabled ? "on" : "off") + '">' + (c.enabled ? "ON" : "OFF") + "</span>";
+
+        const nameEl = document.createElement("span");
+        nameEl.className = "charger-name";
+        nameEl.textContent = c.name;
+
+        const currentEl = document.createElement("span");
+        currentEl.className = "charger-current";
+        [
+          ["L1", c.actual.l1],
+          ["L2", c.actual.l2],
+          ["L3", c.actual.l3],
+        ].forEach(([phaseLabel, value], i) => {
+          if (i > 0) currentEl.appendChild(document.createTextNode("   "));
+          const labelEl = document.createElement("span");
+          labelEl.className = "charger-current-label";
+          labelEl.textContent = phaseLabel + " ";
+          currentEl.appendChild(labelEl);
+          currentEl.appendChild(document.createTextNode(fmt(value)));
+          const unitEl = document.createElement("span");
+          unitEl.className = "charger-current-label";
+          unitEl.textContent = "A";
+          currentEl.appendChild(unitEl);
+        });
+
+        const statusEl = document.createElement("span");
+        statusEl.className = "charger-status";
+        const dot = document.createElement("span");
+        dot.className = "status-dot " + (c.online ? "online" : "offline");
+        statusEl.appendChild(dot);
+        statusEl.appendChild(
+          document.createTextNode(c.online ? "Online" : "Offline · last seen " + formatLastSeen(c.last_seen))
+        );
+
+        const pill = document.createElement("span");
+        pill.className = "pill " + (c.enabled ? "on" : "off");
+        pill.textContent = c.enabled ? "ON" : "OFF";
+
+        row.appendChild(nameEl);
+        row.appendChild(currentEl);
+        row.appendChild(statusEl);
+        row.appendChild(pill);
         chargersEl.appendChild(row);
       }
     }
