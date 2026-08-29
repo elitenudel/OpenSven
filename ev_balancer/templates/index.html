@@ -328,6 +328,28 @@
     right: 0.9rem;
   }
 
+  .graph-fullscreen-btn {
+    right: 3.9rem;
+  }
+
+  dialog#graph-dialog:fullscreen {
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    max-height: none;
+    display: flex;
+    flex-direction: column;
+  }
+
+  dialog#graph-dialog:fullscreen .graph-wrap {
+    flex: 1;
+    min-height: 0;
+  }
+
+  dialog#graph-dialog:fullscreen #graph-svg {
+    height: 100%;
+  }
+
   .graph-header {
     margin-bottom: 1.25rem;
   }
@@ -810,6 +832,14 @@
   </dialog>
 
   <dialog id="graph-dialog" class="app-dialog">
+    <button class="settings-btn dialog-close-btn graph-fullscreen-btn" id="graph-fullscreen" title="Fullscreen" aria-label="Fullscreen">
+      <svg viewBox="0 0 24 24" width="27" height="27" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 3H5a2 2 0 0 0-2 2v3"></path>
+        <path d="M21 8V5a2 2 0 0 0-2-2h-3"></path>
+        <path d="M3 16v3a2 2 0 0 0 2 2h3"></path>
+        <path d="M16 21h3a2 2 0 0 0 2-2v-3"></path>
+      </svg>
+    </button>
     <button class="settings-btn dialog-close-btn" id="graph-close" title="Close" aria-label="Close">
       <svg viewBox="0 0 24 24" width="27" height="27" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -858,6 +888,7 @@
     const graphBtn = document.getElementById("graph-btn");
     const graphDialog = document.getElementById("graph-dialog");
     const graphClose = document.getElementById("graph-close");
+    const graphFullscreenBtn = document.getElementById("graph-fullscreen");
     const graphSvg = document.getElementById("graph-svg");
     const graphWrap = document.getElementById("graph-wrap");
     const graphTooltip = document.getElementById("graph-tooltip");
@@ -2217,6 +2248,37 @@
         clearInterval(graphRefreshTimer);
         graphRefreshTimer = null;
       }
+      // Escape normally exits fullscreen first and leaves the dialog open
+      // (standard browser behavior), but any other way the dialog closes
+      // (the Close button, backdrop click) while still fullscreen would
+      // otherwise leave the page stuck in fullscreen behind it.
+      if (document.fullscreenElement === graphDialog) document.exitFullscreen();
+    });
+
+    const GRAPH_MAXIMIZE_ICON =
+      '<path d="M8 3H5a2 2 0 0 0-2 2v3"></path><path d="M21 8V5a2 2 0 0 0-2-2h-3"></path>' +
+      '<path d="M3 16v3a2 2 0 0 0 2 2h3"></path><path d="M16 21h3a2 2 0 0 0 2-2v-3"></path>';
+    const GRAPH_MINIMIZE_ICON =
+      '<path d="M8 3v3a2 2 0 0 1-2 2H3"></path><path d="M21 8h-3a2 2 0 0 1-2-2V3"></path>' +
+      '<path d="M3 16h3a2 2 0 0 1 2 2v3"></path><path d="M16 21v-3a2 2 0 0 1 2-2h3"></path>';
+
+    graphFullscreenBtn.addEventListener("click", () => {
+      if (document.fullscreenElement === graphDialog) {
+        document.exitFullscreen();
+      } else {
+        graphDialog.requestFullscreen().catch(() => {});
+      }
+    });
+    document.addEventListener("fullscreenchange", () => {
+      const isFullscreen = document.fullscreenElement === graphDialog;
+      graphFullscreenBtn.querySelector("svg").innerHTML = isFullscreen ? GRAPH_MINIMIZE_ICON : GRAPH_MAXIMIZE_ICON;
+      graphFullscreenBtn.title = isFullscreen ? "Exit fullscreen" : "Fullscreen";
+      graphFullscreenBtn.setAttribute("aria-label", graphFullscreenBtn.title);
+      // The SVG viewBox is sized off the wrap's actual rendered pixels (see
+      // renderGraph), which just changed - re-render immediately rather
+      // than waiting for the next 5s poll so it doesn't look stale/wrong
+      // sized in the meantime.
+      if (graphDialog.open) renderGraph(lastGraphSamples);
     });
 
     async function poll() {
