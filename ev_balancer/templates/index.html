@@ -1169,6 +1169,32 @@
       return id;
     }
 
+    // Diagonal hatch used to mark a stretch where the whole balancer process
+    // was down (as opposed to the solid red bottom bar for one charger being
+    // unreachable while the app kept running) - see ensureOutagePattern's
+    // caller for how the two are told apart.
+    function ensureOutagePattern() {
+      const id = "graph-outage-pattern";
+      if (!graphSvg.querySelector("#" + id)) {
+        let defs = graphSvg.querySelector("defs");
+        if (!defs) {
+          defs = svgEl("defs", {});
+          graphSvg.insertBefore(defs, graphSvg.firstChild);
+        }
+        const pattern = svgEl("pattern", {
+          id,
+          width: 8,
+          height: 8,
+          patternTransform: "rotate(45)",
+          patternUnits: "userSpaceOnUse",
+        });
+        pattern.appendChild(svgEl("rect", { width: 8, height: 8, fill: "#3a3a3a" }));
+        pattern.appendChild(svgEl("line", { x1: 0, y1: 0, x2: 0, y2: 8, stroke: "#5a5a5a", "stroke-width": 3 }));
+        defs.appendChild(pattern);
+      }
+      return id;
+    }
+
     // Horizontal gradient for a gridline's fill: transparent at the very
     // ends, ramping up to peakOpacity by 5% in and staying there until 95%,
     // then back down to transparent - objectBoundingBox (the default)
@@ -1458,6 +1484,29 @@
       return runs;
     }
 
+    // Finds stretches where the *whole* balancer process wasn't recording -
+    // not just one charger being unreachable while the app stayed up. Each
+    // history.record() call writes one sample covering the main fuse and
+    // every currently configured charger together, so a gap between two
+    // consecutive top-level samples can't be explained by any single
+    // charger's own state - only the process not looping at all explains it.
+    // Operating on the raw sample timeline (rather than any one charger's
+    // points) means this works the same regardless of how many chargers are
+    // configured, including exactly one.
+    function findOutageGaps(times) {
+      if (times.length < 2) return [];
+      const gaps = [];
+      for (let i = 1; i < times.length; i++) gaps.push(times[i] - times[i - 1]);
+      const sortedGaps = gaps.slice().sort((a, b) => a - b);
+      const typicalGap = sortedGaps[Math.floor(sortedGaps.length / 2)];
+      const maxGap = Math.max(typicalGap * 2.5, 120);
+      const outages = [];
+      for (let i = 1; i < times.length; i++) {
+        if (times[i] - times[i - 1] > maxGap) outages.push([times[i - 1], times[i]]);
+      }
+      return outages;
+    }
+
     function renderGraph(samples) {
       // Match the viewBox to the SVG's actual rendered pixel size (rather
       // than a fixed 800x420 with preserveAspectRatio="none" stretching to
@@ -1657,6 +1706,32 @@
         svgEl("rect", { x: marginLeft, y: 0, width: dataFadeWidth, height, fill: `url(#${dataFadeGradId})` })
       );
       defs.appendChild(dataFadeMask);
+
+      // Whole-process outages (see findOutageGaps) get a full-height hatched
+      // band, distinct from the per-charger red bottom bar drawn later for
+      // "app running but this one charger unreachable" - drawn before
+      // seriesGroup so any series data does end up on top of it, though in
+      // practice nothing is ever drawn in this x-range for any series since
+      // that's exactly what makes it an outage.
+      const outageGaps = findOutageGaps(samples.map((s) => s.t));
+      if (outageGaps.length) {
+        const outageGroup = svgEl("g", {});
+        graphSvg.appendChild(outageGroup);
+        for (const [t0, t1] of outageGaps) {
+          const x0 = xScaleData(t0);
+          const x1 = xScaleData(t1);
+          outageGroup.appendChild(
+            svgEl("rect", {
+              x: x0,
+              y: marginTop,
+              width: Math.max(x1 - x0, 1),
+              height: plotH,
+              fill: `url(#${ensureOutagePattern()})`,
+              opacity: 0.55,
+            })
+          );
+        }
+      }
 
       const seriesGroup = svgEl("g", { mask: `url(#${dataFadeMaskId})` });
       graphSvg.appendChild(seriesGroup);
