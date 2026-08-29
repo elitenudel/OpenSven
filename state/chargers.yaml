@@ -1,5 +1,0 @@
-stations:
-- name: Charger 1
-  host: 10.30.0.200
-  port: 502
-  unit_id: 255
