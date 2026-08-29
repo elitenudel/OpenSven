@@ -332,10 +332,14 @@
     right: 3.9rem;
   }
 
-  /* Kept as separate rules per pseudo-class, not comma-joined - a browser
-     that doesn't recognize one of these (e.g. Firefox and
-     :-webkit-full-screen) would otherwise drop the whole selector group. */
-  dialog#graph-dialog:fullscreen {
+  /* Fullscreen is requested on <html>, not on #graph-dialog itself - Chromium
+     denies a direct requestFullscreen() call on an element that's already an
+     open <dialog> (it occupies its own top-layer slot as a modal), so these
+     match the dialog as a *descendant* of the fullscreen root instead. Kept
+     as separate rules per pseudo-class, not comma-joined - a browser that
+     doesn't recognize one of these (e.g. Firefox and :-webkit-full-screen)
+     would otherwise drop the whole selector group. */
+  :fullscreen dialog#graph-dialog {
     width: 100vw;
     height: 100vh;
     max-width: none;
@@ -343,7 +347,7 @@
     display: flex;
     flex-direction: column;
   }
-  dialog#graph-dialog:-webkit-full-screen {
+  :-webkit-full-screen dialog#graph-dialog {
     width: 100vw;
     height: 100vh;
     max-width: none;
@@ -352,19 +356,19 @@
     flex-direction: column;
   }
 
-  dialog#graph-dialog:fullscreen .graph-wrap {
+  :fullscreen dialog#graph-dialog .graph-wrap {
     flex: 1;
     min-height: 0;
   }
-  dialog#graph-dialog:-webkit-full-screen .graph-wrap {
+  :-webkit-full-screen dialog#graph-dialog .graph-wrap {
     flex: 1;
     min-height: 0;
   }
 
-  dialog#graph-dialog:fullscreen #graph-svg {
+  :fullscreen dialog#graph-dialog #graph-svg {
     height: 100%;
   }
-  dialog#graph-dialog:-webkit-full-screen #graph-svg {
+  :-webkit-full-screen dialog#graph-dialog #graph-svg {
     height: 100%;
   }
 
@@ -2300,7 +2304,12 @@
     }
 
     graphFullscreenBtn.addEventListener("click", () => {
-      const action = graphFullscreenElement() === graphDialog ? graphExitFullscreen() : graphRequestFullscreen(graphDialog);
+      // Fullscreen is requested on <html>, not #graph-dialog itself - see
+      // the CSS comment above :fullscreen dialog#graph-dialog for why
+      // (Chromium denies a direct request on an already-open <dialog>).
+      // The dialog keeps rendering on top regardless, since showModal()
+      // puts it in the browser's top layer independent of page fullscreen.
+      const action = graphFullscreenElement() ? graphExitFullscreen() : graphRequestFullscreen(document.documentElement);
       // Surfaced instead of silently swallowed - a rejection here (e.g. the
       // browser refusing without a real user gesture, or an environment
       // that disables the API outright) previously looked exactly like the
@@ -2314,7 +2323,7 @@
     // current browser actually dispatches drives the same handler.
     ["fullscreenchange", "webkitfullscreenchange"].forEach((evtName) => {
       document.addEventListener(evtName, () => {
-        const isFullscreen = graphFullscreenElement() === graphDialog;
+        const isFullscreen = !!graphFullscreenElement();
         graphFullscreenBtn.querySelector("svg").innerHTML = isFullscreen ? GRAPH_MINIMIZE_ICON : GRAPH_MAXIMIZE_ICON;
         graphFullscreenBtn.title = isFullscreen ? "Exit fullscreen" : "Fullscreen";
         graphFullscreenBtn.setAttribute("aria-label", graphFullscreenBtn.title);
