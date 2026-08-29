@@ -1648,6 +1648,23 @@
         if (opacity <= 0.02) continue;
         const anchor = frac < tickEdgeFade ? "start" : frac > 1 - tickEdgeFade ? "end" : "middle";
 
+        // A vertical rule at this same tick, styled like the unlabeled
+        // horizontal reference lines above (#1f1f1f, 0.44 peak opacity) - it
+        // reuses this tick's own edge-fade opacity (scaled down to that same
+        // 0.44 peak) rather than a separate taper, so it fades exactly in
+        // step with the clock label/dot it lines up with.
+        graphSvg.appendChild(
+          svgEl("line", {
+            x1: xx,
+            y1: marginTop,
+            x2: xx,
+            y2: height - marginBottom,
+            stroke: "#1f1f1f",
+            "stroke-width": 1,
+            opacity: (opacity * 0.44).toFixed(2),
+          })
+        );
+
         // A small dot right on the axis baseline pins down the exact x
         // position the label refers to - useful since the label itself
         // sits below the axis and (for the edge-anchored ones especially)
