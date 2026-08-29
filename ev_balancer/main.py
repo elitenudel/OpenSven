@@ -184,6 +184,21 @@ def run(config: dict, shelly_only: bool = False) -> None:
                                 )
                             )
                             continue
+                        if not st.online:
+                            # A fresh Modbus TCP session appears to reset the
+                            # station's timeout max charge current / alive
+                            # timeout registers back to their unconfigured 0
+                            # default, so recovering from a dropped connection
+                            # needs these re-armed - otherwise this process's
+                            # own safety net would silently stay disabled
+                            # until the whole service is restarted.
+                            try:
+                                st.client.set_timeout_max_charge_current_ma(int(fallback_current_a * 1000))
+                                st.client.set_alive_timeout_ms(int(alive_timeout_seconds * 1000))
+                                if st.last_seen is not None:
+                                    logger.info("Re-armed safety registers on %s after reconnect", st.name)
+                            except IOError as exc:
+                                logger.error("Failed to re-arm safety registers on %s after reconnect: %s", st.name, exc)
                         st.online = True
                         st.last_seen = now
 
