@@ -545,6 +545,12 @@
     background: #f1c40f;
   }
 
+  /* Matches ensureOutagePattern()'s SVG hatch (same colors/angle) so this
+     legend swatch reads as "the same texture", not a fourth color. */
+  .graph-state-swatch.outage {
+    background: repeating-linear-gradient(45deg, #5a5a5a 0, #5a5a5a 1.5px, #3a3a3a 1.5px, #3a3a3a 4px);
+  }
+
   .settings-field {
     margin-bottom: 1.25rem;
   }
@@ -872,9 +878,10 @@
     </div>
 
     <div class="graph-state-legend">
-      <span class="graph-state-legend-item"><span class="graph-state-swatch blocked"></span>blocked by the balancer</span>
       <span class="graph-state-legend-item"><span class="graph-state-swatch limited"></span>limited by the balancer</span>
+      <span class="graph-state-legend-item"><span class="graph-state-swatch blocked"></span>blocked by the balancer</span>
       <span class="graph-state-legend-item"><span class="graph-state-swatch offline"></span>offline/no data</span>
+      <span class="graph-state-legend-item"><span class="graph-state-swatch outage"></span>server down</span>
     </div>
 
     <p class="settings-error" id="graph-error"></p>
@@ -2257,6 +2264,12 @@
         clearInterval(graphRefreshTimer);
         graphRefreshTimer = null;
       }
+      // Always reopen at the normal size rather than remembering maximized
+      // across opens - closing is treated as a reset, not just a hide.
+      graphDialog.classList.remove("maximized");
+      graphFullscreenBtn.querySelector("svg").innerHTML = GRAPH_MAXIMIZE_ICON;
+      graphFullscreenBtn.title = "Maximize";
+      graphFullscreenBtn.setAttribute("aria-label", "Maximize");
     });
 
     const GRAPH_MAXIMIZE_ICON =
