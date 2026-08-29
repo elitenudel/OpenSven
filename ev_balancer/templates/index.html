@@ -334,8 +334,13 @@
 
   /* "Maximized" just means filling the browser window/viewport, not the OS-
      level Fullscreen API (no chrome-hiding, no permission prompts) - a plain
-     class toggle rather than :fullscreen. */
-  dialog#graph-dialog.maximized {
+     class toggle rather than :fullscreen. The [open] qualifier matters: close()
+     removes the open attribute but never touches this class, and this rule's
+     `display: flex` otherwise outranks the browser's own
+     `dialog:not([open]) { display: none }` (higher specificity - an id+class
+     beats a type+:not()), so a closed-while-maximized dialog stayed visible,
+     stuck rendering, even though .open was already false underneath. */
+  dialog#graph-dialog.maximized[open] {
     width: 100vw;
     height: 100vh;
     max-width: none;
@@ -345,12 +350,12 @@
     flex-direction: column;
   }
 
-  dialog#graph-dialog.maximized .graph-wrap {
+  dialog#graph-dialog.maximized[open] .graph-wrap {
     flex: 1;
     min-height: 0;
   }
 
-  dialog#graph-dialog.maximized #graph-svg {
+  dialog#graph-dialog.maximized[open] #graph-svg {
     height: 100%;
   }
 
